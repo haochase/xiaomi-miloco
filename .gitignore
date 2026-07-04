@@ -45,6 +45,7 @@ __pycache__
 *.egg-info
 *.py[oc]
 .pytest_cache/
+.pytest-tmp-live/
 .ruff_cache/
 
 # Backend test artifacts
