@@ -21,6 +21,8 @@ from miloco.perception.engine.omni.constants import MILOCO_USER_AGENT
 logger = logging.getLogger(__name__)
 
 _ENV_KEY = "MILOCO_MODEL__OMNI__API_KEY"
+_TOKEN_PLAN_HOST = "token-plan-cn.xiaomimimo.com"
+_TOKEN_PLAN_VISION_MODEL = "mimo-v2.5"
 
 
 class OmniError(Exception):
@@ -67,6 +69,7 @@ class OmniError(Exception):
 @dataclass(frozen=True)
 class OmniCallMeta:
     """omni 单次调用的元数据(latency / retry / token / error)。"""
+
     latency_ms: float
     retry_count: int = 0
     input_tokens: int | None = None
@@ -89,11 +92,21 @@ class OmniCallMeta:
         return cls(
             latency_ms=latency_ms,
             retry_count=retry_count,
-            input_tokens=int(usage["prompt_tokens"]) if usage.get("prompt_tokens") is not None else None,
-            output_tokens=int(usage["completion_tokens"]) if usage.get("completion_tokens") is not None else None,
-            cached_tokens=int(details["cached_tokens"]) if details.get("cached_tokens") is not None else None,
-            audio_tokens=int(details["audio_tokens"]) if details.get("audio_tokens") is not None else None,
-            video_tokens=int(details["video_tokens"]) if details.get("video_tokens") is not None else None,
+            input_tokens=int(usage["prompt_tokens"])
+            if usage.get("prompt_tokens") is not None
+            else None,
+            output_tokens=int(usage["completion_tokens"])
+            if usage.get("completion_tokens") is not None
+            else None,
+            cached_tokens=int(details["cached_tokens"])
+            if details.get("cached_tokens") is not None
+            else None,
+            audio_tokens=int(details["audio_tokens"])
+            if details.get("audio_tokens") is not None
+            else None,
+            video_tokens=int(details["video_tokens"])
+            if details.get("video_tokens") is not None
+            else None,
             error_code=error_code,
         )
 
@@ -106,6 +119,68 @@ def resolve_omni_api_key(api_key_from_config: str = "") -> str:
 def resolve_api_key(config: OmniConfig) -> str:
     """Resolve API key from config or environment variable."""
     return resolve_omni_api_key(config.api_key)
+
+
+def uses_mimo_token_plan(base_url: str) -> bool:
+    """Return True for MiMo token-plan endpoints that use the V2.5 request shape."""
+    return _TOKEN_PLAN_HOST in base_url.lower()
+
+
+def normalize_mimo_chat_model(model: str, base_url: str) -> str:
+    """Normalize legacy/provider-prefixed MiMo model ids for token-plan chat APIs."""
+    normalized = model.strip()
+    if not uses_mimo_token_plan(base_url):
+        return normalized
+    if normalized.startswith("xiaomi/"):
+        normalized = normalized.split("/", 1)[1]
+    if normalized.startswith("mimo-v2"):
+        return _TOKEN_PLAN_VISION_MODEL
+    return normalized or _TOKEN_PLAN_VISION_MODEL
+
+
+def build_mimo_chat_headers(*, api_key: str, base_url: str) -> dict[str, str]:
+    """Build auth headers for the configured MiMo/OpenAI-compatible endpoint."""
+    headers = {
+        "Content-Type": "application/json",
+        "User-Agent": MILOCO_USER_AGENT,
+    }
+    if uses_mimo_token_plan(base_url):
+        headers["api-key"] = api_key
+    else:
+        headers["Authorization"] = f"Bearer {api_key}"
+    return headers
+
+
+def build_mimo_chat_body(
+    *,
+    model: str,
+    messages: list[dict[str, Any]],
+    config: OmniConfig,
+    stream: bool,
+) -> dict[str, Any]:
+    """Build a chat/completions body for legacy OpenAI and MiMo token-plan APIs."""
+    if uses_mimo_token_plan(config.base_url):
+        body: dict[str, Any] = {
+            "model": normalize_mimo_chat_model(model, config.base_url),
+            "messages": messages,
+            "max_completion_tokens": config.max_completion_tokens,
+            "temperature": config.temperature,
+            "top_p": config.top_p,
+            "stream": stream,
+            "thinking": {"type": "disabled"},
+        }
+        if stream:
+            body["stream_options"] = {"include_usage": True}
+        return body
+    return {
+        "model": model,
+        "messages": messages,
+        "max_tokens": config.max_completion_tokens,
+        "temperature": config.temperature,
+        "top_p": config.top_p,
+        "stream": stream,
+        "thinking": {"type": "disabled"},
+    }
 
 
 def resolve_live_omni_config(base: OmniConfig) -> OmniConfig:
@@ -147,15 +222,13 @@ async def call_omni(
 
     messages = _build_messages(payload)
 
-    body: dict[str, Any] = {
-        "model": config.model,
-        "messages": messages,
-        "max_tokens": config.max_completion_tokens,
-        "temperature": config.temperature,
-        "top_p": config.top_p,
-        "stream": False,
-        "thinking": {"type": "disabled"},
-    }
+    body = build_mimo_chat_body(
+        model=config.model,
+        messages=messages,
+        config=config,
+        stream=False,
+    )
+    request_model = body["model"]
 
     t0 = time.monotonic()
     raw: dict[str, Any] | None = None
@@ -164,20 +237,17 @@ async def call_omni(
         async with httpx.AsyncClient(timeout=config.timeout) as client:
             resp = await client.post(
                 f"{config.base_url}/chat/completions",
-                headers={
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {api_key}",
-                    "User-Agent": MILOCO_USER_AGENT,
-                },
+                headers=build_mimo_chat_headers(
+                    api_key=api_key,
+                    base_url=config.base_url,
+                ),
                 json=body,
             )
             if resp.status_code != 200:
-                logger.error(
-                    "Omni API error %d: %s", resp.status_code, resp.text[:500]
-                )
+                logger.error("Omni API error %d: %s", resp.status_code, resp.text[:500])
             resp.raise_for_status()
             raw = resp.json()
-            fire_record(config.model, raw.get("usage", {}), type)
+            fire_record(request_model, raw.get("usage", {}), type)
         return raw
     except OmniError:
         raise  # 不重复包装
@@ -192,14 +262,14 @@ async def call_omni(
             raw=raw,
             latency_ms=(time.monotonic() - t0) * 1000,
             error=error,
-            model=config.model,
+            model=request_model,
         )
 
 
 def _build_messages(payload: dict) -> list[dict]:
     messages: list[dict] = [{"role": "system", "content": payload["system_prompt"]}]
 
-    content: list[dict] = [{"type": "text", "text": payload["user_content"]}]
+    content: list[dict] = []
 
     # Video (frames + audio merged into mp4)；与 audio_base64 互斥（上游 _build_payload 保证）
     if payload.get("video_base64"):
@@ -209,8 +279,8 @@ def _build_messages(payload: dict) -> list[dict]:
                 "video_url": {
                     "url": f"data:video/mp4;base64,{payload['video_base64']}"
                 },
-                "fps": payload.get("video_fps", 3),
-                "media_resolution": "max",
+                "fps": 2,
+                "media_resolution": "default",
             }
         )
     # Audio-only route：独立 input_audio 块（仅当无 video_base64 时启用）
@@ -234,6 +304,8 @@ def _build_messages(payload: dict) -> list[dict]:
                 },
             }
         )
+
+    content.append({"type": "text", "text": payload["user_content"]})
 
     messages.append({"role": "user", "content": content})
     return messages
@@ -321,21 +393,14 @@ async def call_omni_stream(
 
     messages = _build_messages(payload)
 
-    body: dict[str, Any] = {
-        "model": config.model,
-        "messages": messages,
-        "max_tokens": config.max_completion_tokens,
-        "temperature": config.temperature,
-        "top_p": config.top_p,
-        "stream": True,
-        "stream_options": {"include_usage": True},
-        "thinking": {"type": "disabled"},
-    }
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {api_key}",
-        "User-Agent": MILOCO_USER_AGENT,
-    }
+    body = build_mimo_chat_body(
+        model=config.model,
+        messages=messages,
+        config=config,
+        stream=True,
+    )
+    request_model = body["model"]
+    headers = build_mimo_chat_headers(api_key=api_key, base_url=config.base_url)
 
     # 累积本次调用最后一次见到的 raw usage（OpenAI 字段），循环结束后统一上报一次，
     # 跟 call_omni / _call_omni_messages 的非 stream 路径完全对齐。
@@ -380,7 +445,9 @@ async def call_omni_stream(
                     # content delta：choices[0].delta.content
                     try:
                         delta = (
-                            chunk.get("choices", [{}])[0].get("delta", {}).get("content")
+                            chunk.get("choices", [{}])[0]
+                            .get("delta", {})
+                            .get("content")
                         )
                     except (IndexError, KeyError):
                         delta = None
@@ -397,13 +464,13 @@ async def call_omni_stream(
     finally:
         # generator close (正常 / 异常 / 消费方提前 break) 时统一上报一次
         if raw_usage_seen is not None:
-            fire_record(config.model, raw_usage_seen, type)
+            fire_record(request_model, raw_usage_seen, type)
         raw_for_log = {"usage": raw_usage_seen} if raw_usage_seen else None
         _publish_omni_log_safe(
             messages=messages,
             raw=raw_for_log,
             latency_ms=(time.monotonic() - t0) * 1000,
             error=error,
-            model=config.model,
+            model=request_model,
             response_text="".join(response_chunks),
         )

@@ -10,6 +10,7 @@ import logging
 import re
 from typing import Any
 
+from miloco.life.intent import is_life_voice_candidate
 from miloco.perception.engine.types import OmniOutput
 from miloco.perception.types import CaptionEntry, MatchedRule, Speech, Suggestion
 
@@ -341,16 +342,17 @@ def _parse_speeches(raw: Any) -> list[Speech]:
     result = []
     for item in raw:
         if isinstance(item, dict):
+            content = str(item.get("content", ""))
             result.append(
                 Speech(
                     # TODO 临时禁用语音指令链路：强制 needs_response=false。
                     # 影响：① client.py 不再 dispatch_event("interaction") → agent 不会被语音触发；
                     #      ② event_classifier.has_asr 恒 false → 仅 ASR 的窗口不入 meaningful_events 表。
                     # 恢复：删除下面 False 覆盖行，启用上面被注释的原行。
-                    # needs_response=bool(item.get("needs_response", False)),
-                    needs_response=False,
+                    needs_response=bool(item.get("needs_response", False))
+                    and is_life_voice_candidate(content),
                     speaker=str(item.get("speaker", "")),
-                    content=str(item.get("content", "")),
+                    content=content,
                     is_complete=bool(item.get("is_complete", True)),
                 )
             )

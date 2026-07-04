@@ -64,14 +64,24 @@ def _mock_edge_packet() -> IdentityPacket:
                 person_id="wangshihao",
                 track_id=1,
                 needs_omni_verify=False,
-                box_info=[TrackingBoxInfo(frame_index=0, boxes={"human_body": (10, 10, 50, 80)})],
+                box_info=[
+                    TrackingBoxInfo(
+                        frame_index=0, boxes={"human_body": (10, 10, 50, 80)}
+                    )
+                ],
             )
         ],
         scene_motion=MotionState.STATIC,
-        frames=[SelectedFrame(frame_index=0, image=frame, resolution=FrameResolution.HIGH, crops=[])],
+        frames=[
+            SelectedFrame(
+                frame_index=0, image=frame, resolution=FrameResolution.HIGH, crops=[]
+            )
+        ],
         all_frames=[np.zeros((100, 100, 3), dtype=np.uint8)],
         audio_clip=np.array([], dtype=np.int16),
-        audio_analysis=AudioAnalysis(type=AudioType.SILENCE, is_urgent=False, energy_level=0.0),
+        audio_analysis=AudioAnalysis(
+            type=AudioType.SILENCE, is_urgent=False, energy_level=0.0
+        ),
     )
 
 
@@ -79,11 +89,19 @@ def _mock_edge_packet() -> IdentityPacket:
 async def test_run_omni_with_mock():
     ep = _mock_edge_packet()
     ctx = OmniContext(
-        rule_conditions=[RuleCondition(rule_id="reading_light", rule_name="读书开灯", query="是否在读书")],
+        rule_conditions=[
+            RuleCondition(
+                rule_id="reading_light", rule_name="读书开灯", query="是否在读书"
+            )
+        ],
     )
     config = OmniConfig(api_key="test-key")
 
-    with patch("miloco.perception.engine.omni.omni.call_omni", new_callable=AsyncMock, return_value=MOCK_RESPONSE):
+    with patch(
+        "miloco.perception.engine.omni.omni.call_omni",
+        new_callable=AsyncMock,
+        return_value=MOCK_RESPONSE,
+    ):
         output = await run_omni(ep, ctx, config)
 
     assert len(output.caption) == 1
@@ -116,7 +134,7 @@ class TestLoopbackTailDetection:
 
     def test_json_indentation_not_detected(self):
         """关键防护：连续 12 个空格的 JSON 缩进不能触发（\\S 排除空白 ngram）。"""
-        indented = '{\n' + ' ' * 30 + '"needs_response": false'
+        indented = "{\n" + " " * 30 + '"needs_response": false'
         assert _has_loopback_tail(indented) is False
 
     def test_unigram_repeat_detected(self):
@@ -126,19 +144,19 @@ class TestLoopbackTailDetection:
 
     def test_bigram_with_separator_detected(self):
         """带分隔符的 bigram 复读（"那个，那个，那个..."）命中。"""
-        buf = '"content": "哎，' + '那个，' * 12
+        buf = '"content": "哎，' + "那个，" * 12
         assert _has_loopback_tail(buf) is True
 
     def test_quad_gram_cycle_detected(self):
         """4-gram 循环（"嗯，对，嗯，对..."）命中。"""
-        buf = '"content": "好，行，' + '嗯，对，' * 11
+        buf = '"content": "好，行，' + "嗯，对，" * 11
         assert _has_loopback_tail(buf) is True
 
     def test_repeat_below_threshold_not_detected(self):
         """重复 < 10 次不触发，避免误伤"哈哈哈"等中文叠词。"""
-        assert _has_loopback_tail('"content": "哈哈哈"' + ' ' * 10) is False
+        assert _has_loopback_tail('"content": "哈哈哈"' + " " * 10) is False
         # 9 次重复刚好不命中
-        buf = '"content": "好的' + '那个' * 9
+        buf = '"content": "好的' + "那个" * 9
         assert _has_loopback_tail(buf) is False
 
     def test_real_log_sample_loop_complete(self):
@@ -147,7 +165,8 @@ class TestLoopbackTailDetection:
         buf = (
             '{\n  "speeches": [\n    {\n      "needs_response": false,\n'
             '      "speaker": "未知",\n      "content": "好，行，嗯，对，'
-            + '嗯，对，' * 10
+            + "嗯，对，"
+            * 10
         )
         assert _has_loopback_tail(buf) is True
 
@@ -184,7 +203,7 @@ class TestStreamLoopbackAbort:
             '{\n  "speeches": [\n    {\n      "needs_response": false,\n'
             '      "speaker": "未知",\n      "content": "哎，'
         )
-        loop_part = '那个，' * 50  # 模拟模型复读
+        loop_part = "那个，" * 50  # 模拟模型复读
         tail = '"\n    }\n  ]\n}'
         full = prefix + loop_part + tail
 

@@ -616,6 +616,60 @@ class MiotService:
             logger.error("Failed to stop video stream: %s", e)
             raise MiotServiceException(f"Failed to stop video stream: {str(e)}") from e
 
+    async def start_camera_decode_audio_stream(
+        self,
+        camera_id: str,
+        channel: int,
+        callback,
+    ) -> int:
+        """Subscribe to decoded audio frames for short-lived voice capture."""
+        try:
+            logger.info(
+                "Starting decoded audio stream: camera_id=%s, channel=%s",
+                camera_id,
+                channel,
+            )
+            if callback is None:
+                logger.info(
+                    "No callback function, skipping registration: camera_id=%s",
+                    camera_id,
+                )
+                return -1
+            return await self._miot_proxy.start_camera_decode_audio_stream(
+                camera_id,
+                channel,
+                callback,
+            )
+        except Exception as e:
+            logger.error("Failed to start decoded audio stream: %s", e)
+            raise MiotServiceException(
+                f"Failed to start decoded audio stream: {str(e)}"
+            ) from e
+
+    async def stop_camera_decode_audio_stream(
+        self,
+        camera_id: str,
+        channel: int,
+        reg_id: int,
+    ) -> None:
+        """Unsubscribe from the decoded audio stream."""
+        try:
+            logger.info(
+                "Stopping decoded audio stream: camera_id=%s, reg_id=%d",
+                camera_id,
+                reg_id,
+            )
+            await self._miot_proxy.stop_camera_decode_audio_stream(
+                camera_id,
+                channel,
+                reg_id,
+            )
+        except Exception as e:
+            logger.error("Failed to stop decoded audio stream: %s", e)
+            raise MiotServiceException(
+                f"Failed to stop decoded audio stream: {str(e)}"
+            ) from e
+
     async def get_home_info(self, *, refresh: bool = False) -> dict:
         """Get home info。refresh=True 时先刷新云端数据。"""
         try:

@@ -127,6 +127,45 @@ class TestParseOmniResponse:
         assert result.speeches[1].needs_response is False
         assert result.speeches[2].needs_response is False
 
+    def test_life_agent_voice_intent_keeps_needs_response(self):
+        data = {
+            "caption": [],
+            "speeches": [
+                {
+                    "needs_response": True,
+                    "speaker": "\u7528\u6237",
+                    "content": (
+                        "\u5e2e\u6211\u770b\u770b"
+                        "\u8fd9\u4ef6\u8863\u670d\u600e\u4e48\u642d"
+                    ),
+                    "is_complete": True,
+                }
+            ],
+        }
+
+        result = parse_omni_response(_wrap(json.dumps(data, ensure_ascii=False)))
+
+        assert len(result.speeches) == 1
+        assert result.speeches[0].needs_response is True
+
+    def test_non_life_voice_command_stays_disabled(self):
+        data = {
+            "caption": [],
+            "speeches": [
+                {
+                    "needs_response": True,
+                    "speaker": "\u7528\u6237",
+                    "content": "\u6253\u5f00\u5ba2\u5385\u706f",
+                    "is_complete": True,
+                }
+            ],
+        }
+
+        result = parse_omni_response(_wrap(json.dumps(data, ensure_ascii=False)))
+
+        assert len(result.speeches) == 1
+        assert result.speeches[0].needs_response is False
+
     def test_rule_name_resolved_to_uuid(self):
         """非空 mapping 命中 → rule_name 还原为 rule_id(UUID)。"""
         data = {"matched_rules": [{"rule_name": "[read] 阅读", "reason": "正在看书", "hit": True}]}
