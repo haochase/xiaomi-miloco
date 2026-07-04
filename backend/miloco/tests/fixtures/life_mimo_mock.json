@@ -1,0 +1,81 @@
+{
+  "source_id": "demo_afternoon_interview_dinner",
+  "source_type": "mimo_mock",
+  "caption": "Mock MiMo output for an interview outfit and a light family dinner.",
+  "wardrobe": [
+    {
+      "id": "blazer_gray",
+      "name": "dark gray blazer",
+      "category": "outerwear",
+      "colors": ["gray", "black"],
+      "material_tags": ["wool blend"],
+      "season_tags": ["spring", "autumn"],
+      "formality": 4,
+      "warmth_level": 3,
+      "style_tags": ["formal", "minimal"],
+      "confidence": 0.86,
+      "notes": "Good for a calm interview look."
+    },
+    {
+      "id": "shirt_white",
+      "name": "white shirt",
+      "category": "top",
+      "colors": ["white"],
+      "material_tags": ["cotton"],
+      "season_tags": ["spring", "summer", "autumn"],
+      "formality": 4,
+      "warmth_level": 2,
+      "style_tags": ["formal", "simple"],
+      "confidence": 0.81
+    }
+  ],
+  "pantry": [
+    {
+      "id": "egg_1",
+      "name": "eggs",
+      "category": "protein",
+      "quantity": 6,
+      "unit": "pcs",
+      "storage": "fridge",
+      "freshness": "normal",
+      "diet_tags": ["high protein"],
+      "confidence": 0.77
+    },
+    {
+      "id": "tomato_1",
+      "name": "tomatoes",
+      "category": "vegetable",
+      "quantity": 3,
+      "unit": "pcs",
+      "storage": "room_temp",
+      "freshness": "use_soon",
+      "confidence": 0.72
+    },
+    {
+      "id": "dumpling_1",
+      "name": "frozen dumplings",
+      "category": "frozen",
+      "quantity": 1,
+      "unit": "bag",
+      "storage": "freezer",
+      "freshness": "normal",
+      "confidence": 0.64
+    }
+  ],
+  "preferences": [
+    {
+      "person_id": "adult_a",
+      "domain": "outfit",
+      "tags": ["not flashy", "formal enough"],
+      "notes": "Prefers stable neutral colors for interviews."
+    },
+    {
+      "domain": "cooking",
+      "tags": ["light", "less salt"],
+      "notes": "Dinner should fit three people in about 30 minutes."
+    }
+  ],
+  "low_confidence_notes": [
+    "dumpling package brand is not recognized; please confirm before recording exact brand"
+  ]
+}
