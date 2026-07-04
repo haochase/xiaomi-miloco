@@ -25,6 +25,8 @@ dependencies = [
 
 [project.scripts]
 miloco-backend = "miloco.main:start_server"
+miloco-life-demo = "miloco.life.demo:main"
+miloco-life-quick-e2e = "miloco.life.quick_e2e:main"
 
 [build-system]
 requires = ["hatchling", "hatch-vcs"]
