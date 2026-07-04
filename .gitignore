@@ -15,6 +15,11 @@ node_modules
 # Testing
 coverage
 temp
+.miloco-smoke/
+.pytest-tmp/
+.uv-cache/
+backend/miloco/.pytest-tmp/
+backend/miloco/.pytest-tmp-run/
 
 # Turbo
 .turbo
