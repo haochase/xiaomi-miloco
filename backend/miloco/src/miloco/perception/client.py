@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING
 
 from miloco.config import get_settings
 from miloco.dispatch import dispatch_event
+from miloco.life.voice_bridge import run_life_voice_turn_from_speech
 from miloco.node_monitor import Lifecycle, NodeName, get_monitor
 from miloco.observability.context import (
     get_trace_id,
@@ -64,6 +65,19 @@ def _publish_perception_event(event_type: str, source: str, payload: dict) -> No
     if client is None:
         return
     client.publish_event(event_type=event_type, source=source, payload=payload)
+
+
+async def _route_life_speeches(speeches: list[Speech]) -> list[Speech]:
+    default_speeches: list[Speech] = []
+    for speech in speeches:
+        try:
+            consumed = await run_life_voice_turn_from_speech(speech)
+        except Exception as exc:  # noqa: BLE001
+            logger.error("life voice bridge failed: %s", exc, exc_info=True)
+            consumed = False
+        if not consumed:
+            default_speeches.append(speech)
+    return default_speeches
 
 
 if TYPE_CHECKING:
@@ -395,7 +409,11 @@ class PerceptionEngineProxy:
                     {"content": c.content, "room_name": c.room_name},
                 )
             # B2 单源真值:文本构造延迟到 drainer,producer 投递条目 + builder 引用
-            await dispatch_event("interaction", commands, build_speeches_text)
+            default_commands = await _route_life_speeches(commands)
+            if default_commands:
+                await dispatch_event(
+                    "interaction", default_commands, build_speeches_text
+                )
 
         @_on_main_loop
         async def _on_early_matched_rules(rules: list[MatchedRule]) -> None:
@@ -759,7 +777,11 @@ class PerceptionEngineProxy:
                     {"content": it.content, "room_name": it.room_name},
                 )
             # B2 单源真值:文本构造延迟到 drainer(builder 二次过滤对已过滤列表 idempotent)
-            await dispatch_event("interaction", speeches, build_speeches_text)
+            default_speeches = await _route_life_speeches(speeches)
+            if default_speeches:
+                await dispatch_event(
+                    "interaction", default_speeches, build_speeches_text
+                )
 
 
 # ─── meaningful_events 后台持久化(异步,不阻塞 webhook 主路径)───────────
