@@ -128,6 +128,23 @@
           "type": "boolean",
           "default": true,
           "description": "宠物参考图多样性选择（默认开）：视频注册时用人体 ReID 特征距离在同一只候选里贪心选最不相似的 ≤3 张多姿态（第 1 张取质量分最高，第 2/3 张依次选特征距离最远者）；关闭或模型不可用时回退感知哈希 dHash。仅在 pet_recognition 开启时有意义；内部调优参数，一般无需改动"
+        },
+        "outfit": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "可选单主使用者穿搭插件的本地配置；默认关闭，需显式配置后才允许后续安装边界启用",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false,
+              "description": "是否允许安装可选穿搭插件"
+            },
+            "primary_person_id": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "default": null,
+              "description": "穿搭插件唯一主使用者的显式引用；空值不会自动选择任何人"
+            }
+          }
         }
       }
     },

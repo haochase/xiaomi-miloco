@@ -138,6 +138,27 @@ def test_features_env_override(monkeypatch) -> None:
     assert s.features.pet_head_grounding is True
 
 
+def test_outfit_feature_defaults_to_disabled_for_primary_user() -> None:
+    """Outfit 插件默认关闭，且不会隐式选择任何使用者。"""
+    outfit = get_settings().features.outfit
+
+    assert outfit.enabled is False
+    assert outfit.primary_person_id is None
+
+
+def test_outfit_feature_env_override_trims_primary_user_id(monkeypatch) -> None:
+    """只有显式配置的主使用者 ID 才会传给后续插件安装边界。"""
+    monkeypatch.setenv("MILOCO_FEATURES__OUTFIT__ENABLED", "true")
+    monkeypatch.setenv(
+        "MILOCO_FEATURES__OUTFIT__PRIMARY_PERSON_ID", "  primary-person  "
+    )
+    reset_settings()
+
+    outfit = get_settings().features.outfit
+    assert outfit.enabled is True
+    assert outfit.primary_person_id == "primary-person"
+
+
 def test_notify_dedup_window_default() -> None:
     """通知去重窗口默认 60s。"""
     assert get_settings().notify.dedup_window_sec == 60.0
@@ -188,7 +209,11 @@ class TestServerUrlHostPortValidator:
     def _make(self, **overrides) -> MilocoSettings:
         """构造 MilocoSettings 并触发 model_validator。"""
         base = {
-            "server": {"url": "http://127.0.0.1:1810", "host": "127.0.0.1", "port": 1810},
+            "server": {
+                "url": "http://127.0.0.1:1810",
+                "host": "127.0.0.1",
+                "port": 1810,
+            },
         }
         for k, v in overrides.items():
             base["server"][k] = v

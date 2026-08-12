@@ -427,9 +427,37 @@ _DEFAULT_PERF_FIELD_LABELS: dict[str, str] = {
 }
 
 
+class OutfitFeatureSettings(BaseModel):
+    """Explicit local configuration for the optional single-user Outfit plugin."""
+
+    enabled: bool = Field(
+        default=False,
+        description="Whether the optional Outfit plugin may be installed.",
+    )
+    primary_person_id: str | None = Field(
+        default=None,
+        description=(
+            "Explicit primary-person reference for the Outfit plugin. "
+            "The installation boundary validates its presence before enabling routes."
+        ),
+    )
+
+    @field_validator("primary_person_id")
+    @classmethod
+    def _normalize_primary_person_id(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+
 class FeaturesSettings(BaseModel):
     """产品级实验性功能开关（默认关，住户在 web 显式开启）。"""
 
+    outfit: OutfitFeatureSettings = Field(
+        default_factory=OutfitFeatureSettings,
+        description="Configuration for the optional primary-user Outfit plugin.",
+    )
     pet_recognition: bool = Field(
         default=False,
         description=(
@@ -606,7 +634,7 @@ class MilocoSettings(BaseSettings):
         description=(
             "部署时区 (IANA 名,如 Asia/Shanghai / America/Los_Angeles);"
             "null = 跟随系统 /etc/timezone。影响业务侧"
-            "\"今天 / 本周 / rollover\"等部署概念,以及 API 出口 ISO 偏移后缀"
+            '"今天 / 本周 / rollover"等部署概念,以及 API 出口 ISO 偏移后缀'
             "(如 +08:00);DB 存储始终 INTEGER ms (UTC 绝对时刻)。"
         ),
     )
@@ -852,6 +880,7 @@ __all__ = [
     "ModelSettings",
     "NotifySettings",
     "OmniModelSettings",
+    "OutfitFeatureSettings",
     "AgentSettings",
     "PerceptionCollectSettings",
     "PerceptionSettings",
