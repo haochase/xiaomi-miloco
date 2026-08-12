@@ -9,6 +9,7 @@ import sqlite3
 from pathlib import Path
 
 from miloco.life.outfit_feedback_events import OutfitFeedbackEvent
+from miloco.life.outfit_storage import OutfitStorage
 
 
 class OutfitFeedbackEventConflictError(ValueError):
@@ -18,9 +19,11 @@ class OutfitFeedbackEventConflictError(ValueError):
 class OutfitFeedbackEventRepo:
     """Persist immutable feedback events and expose owner-scoped reads."""
 
-    def __init__(self, db_path: str | Path):
-        self._db_path = Path(db_path)
-        self._db_path.parent.mkdir(parents=True, exist_ok=True)
+    def __init__(self, storage: OutfitStorage | str | Path):
+        self._storage = (
+            storage if isinstance(storage, OutfitStorage) else OutfitStorage(storage)
+        )
+        self._db_path = self._storage.database_path
         self._init_schema()
 
     def append(self, event: OutfitFeedbackEvent) -> OutfitFeedbackEvent:
@@ -88,10 +91,8 @@ class OutfitFeedbackEventRepo:
             OutfitFeedbackEvent.model_validate_json(row["payload_json"]) for row in rows
         ]
 
-    def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(str(self._db_path), timeout=10)
-        conn.row_factory = sqlite3.Row
-        return conn
+    def _connect(self):
+        return self._storage.connect()
 
     def _init_schema(self) -> None:
         with self._connect() as conn:
