@@ -79,6 +79,24 @@ logger = logging.getLogger(__name__)
 _BG_TASKS: set[asyncio.Task[object]] = set()
 
 
+def _install_optional_outfit_plugin(
+    app: FastAPI,
+    *,
+    settings: object,
+) -> object | None:
+    """Load Outfit only after its local feature switch is explicitly enabled."""
+    if not settings.features.outfit.enabled:
+        return None
+
+    try:
+        from miloco.life.outfit_host_activation import install_outfit_from_settings
+
+        return install_outfit_from_settings(app, settings=settings)
+    except Exception:  # noqa: BLE001 - an optional local plugin cannot stop Miloco.
+        logger.warning("Optional Outfit plugin setup failed")
+        return None
+
+
 async def _log_cleanup_loop() -> None:
     """Background task: clean up perception/rule logs + observability tables/files."""
     settings = get_settings()
@@ -539,6 +557,8 @@ app.include_router(monitor_router, prefix="/api")
 # AttributeError → 500。跟 perception_router /metrics 端点的 perf 门控对齐。
 if _settings.perf.enabled:
     app.include_router(observability_router)
+
+_install_optional_outfit_plugin(app, settings=_settings)
 
 
 @app.get("/health", include_in_schema=False)
