@@ -8,6 +8,32 @@
 
 import * as realImpl from "./real";
 import { apiFetch } from "./client";
+export {
+  confirmOutfitWardrobeDraft,
+  confirmOutfitRecommendedWear,
+  confirmOutfitMomentTag,
+  createOutfitWardrobeDraft,
+  deleteOutfitWardrobeItem,
+  deleteOutfitMedia,
+  discardOutfitWardrobeDraft,
+  editOutfitMomentTag,
+  getOutfitCapabilities,
+  getOutfitMoment,
+  listOutfitWardrobe,
+  listOutfitWardrobeDrafts,
+  listOutfitMoments,
+  outfitMediaUrl,
+  requestOutfitRecommendation,
+  refreshOutfitMomentTags,
+  rejectOutfitMomentTag,
+  updateOutfitWardrobeItem,
+  type OutfitMomentQuery,
+  type OutfitCapability,
+  type CreateOutfitWardrobeDraftInput,
+  type UpdateOutfitWardrobeItemInput,
+  type OutfitRecommendationInput,
+  type ConfirmOutfitRecommendedWearInput,
+} from "./outfit";
 import type {
   ActivityEvent,
   Device,

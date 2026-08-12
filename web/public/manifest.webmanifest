@@ -1,0 +1,22 @@
+{
+  "name": "Miloco Control Panel",
+  "short_name": "Miloco",
+  "start_url": "/#/agents",
+  "display": "standalone",
+  "background_color": "#f5f5f5",
+  "theme_color": "#ff6900",
+  "icons": [
+    {
+      "src": "/icons/miloco-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/miloco-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

@@ -272,6 +272,26 @@ export const IconActivity = ({ active, ...p }: Props) =>
     </svg>
   );
 
+/** Agents - generic sparkles for optional domain panels. */
+export const IconAgents = ({ active, ...p }: Props) => (
+  <svg {...baseSvg(p)}>
+    <path
+      d="M24 5L27.6 16.4L39 20L27.6 23.6L24 35L20.4 23.6L9 20L20.4 16.4L24 5Z"
+      fill={active ? "currentColor" : "none"}
+      stroke="currentColor"
+      strokeWidth="3.5"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M39 31L40.8 36.2L46 38L40.8 39.8L39 45L37.2 39.8L32 38L37.2 36.2L39 31Z"
+      fill={active ? "currentColor" : "none"}
+      stroke="currentColor"
+      strokeWidth="3"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
 /** 性能 — 折线 + 数据点(仪表风格) */
 export const IconPerf = ({ active, ...p }: Props) =>
   active ? (

@@ -5,6 +5,7 @@ import i18n from "@/i18n";
 declare global {
   interface Window {
     __MILOCO_TOKEN__?: string;
+    __MILOCO_OUTFIT_SIDECAR__?: boolean;
   }
 }
 

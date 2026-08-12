@@ -55,20 +55,28 @@ import { IconMoon, IconSun } from "./lib/icons";
 import { useTheme } from "./hooks/useTheme";
 import { useTranslation } from "react-i18next";
 import { LanguageSwitcher } from "./components/LanguageSwitcher";
+import { AgentsPage } from "./components/agents/AgentsPage";
+import { agentPanelRegistry } from "./agents/registry";
+import {
+  isAgentRoute,
+  parseAppRoute,
+  resolvePanelRoute,
+  type AppRoute,
+} from "./lib/appRoute";
 
-/** URL hash 是 #perf 时,App 整屏渲染性能调试视图,跳过主框架。 */
-function usePerfMode(): boolean {
-  const read = () => {
-    if (typeof window === "undefined") return false;
-    return window.location.hash === "#perf";
+/** Keep the existing perf hash route and generic agent routes in one parser. */
+function useAppRoute(): AppRoute {
+  const read = (): AppRoute => {
+    if (typeof window === "undefined") return { tab: "now" };
+    return parseAppRoute(window.location.hash);
   };
-  const [on, setOn] = useState<boolean>(read);
+  const [route, setRoute] = useState<AppRoute>(read);
   useEffect(() => {
-    const handler = () => setOn(read());
+    const handler = () => setRoute(read());
     window.addEventListener("hashchange", handler);
     return () => window.removeEventListener("hashchange", handler);
   }, []);
-  return on;
+  return route;
 }
 
 function PerfView() {
@@ -113,11 +121,62 @@ function PerfView() {
 /** 顶层切换器:debug mode 与主应用是两棵独立的 React 子树。
  *  这样切换时 hooks 序列不会发生数量变化,避免 Rules of Hooks 错误。 */
 export function App() {
-  const perfMode = usePerfMode();
-  return perfMode ? <PerfView /> : <MainApp />;
+  const route = resolvePanelRoute(useAppRoute(), {
+    outfitSidecar: window.__MILOCO_OUTFIT_SIDECAR__ === true,
+  });
+  if (route.tab === "perf") return <PerfView />;
+  if (isAgentRoute(route)) return <AgentPanelApp route={route} />;
+  return <MainApp route={route} />;
 }
 
-function MainApp() {
+/**
+ * A routed view inside the official panel SPA that loads only agent data.
+ *
+ * This lets an optional agent sidecar serve its own authenticated capability
+ * surface without imitating Mi Home, perception, model, or upgrade endpoints.
+ */
+function AgentPanelApp({
+  route,
+}: {
+  route: Extract<AppRoute, { tab: "agents" }>;
+}) {
+  const { t } = useTranslation();
+  const { effective, toggle } = useTheme();
+
+  return (
+    <div className="h-screen flex flex-col overflow-hidden bg-bg-primary text-text-primary">
+      <header
+        className="flex shrink-0 items-center justify-between gap-4 border-b border-border bg-bg-secondary px-5 md:px-8"
+        style={{ minHeight: 64 }}
+      >
+        <div className="min-w-0">
+          <p className="text-title text-text-primary">Miloco</p>
+          <p className="text-caption text-text-tertiary">{t("nav.agents")}</p>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <LanguageSwitcher />
+          <button
+            type="button"
+            onClick={toggle}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-text-secondary transition-colors hover:bg-bg-tertiary hover:text-text-primary"
+            aria-label={effective === "dark" ? t("theme.toLight") : t("theme.toDark")}
+            title={effective === "dark" ? t("theme.toLight") : t("theme.toDark")}
+          >
+            {effective === "dark" ? <IconSun /> : <IconMoon />}
+          </button>
+        </div>
+      </header>
+      <main className="min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto w-full max-w-[1200px] px-4 pb-12 pt-5 md:px-8">
+          <AgentsPage registry={agentPanelRegistry} route={route} />
+        </div>
+      </main>
+      <ToastHost />
+    </div>
+  );
+}
+
+function MainApp({ route }: { route: Exclude<AppRoute, { tab: "perf" }> }) {
   const { t } = useTranslation();
   // ── 当前家 ────────────────────────────────────────
   // backend 多家庭未上线,前端 homeId 永远 "primary"。切家走 onSwitchHome 调
@@ -184,7 +243,24 @@ function MainApp() {
   // (原本有 now state + 30s setInterval 给 Sidebar 显示时间，现 Sidebar
   // 已不展示时间；HeroNow 的 cam card 内部各自维护 1min 时钟。)
 
-  const [activeTab, setActiveTab] = useState<TabKey>("now");
+  const [activeTab, setActiveTab] = useState<TabKey>(
+    route.tab === "agents" ? "agents" : "now",
+  );
+  useEffect(() => {
+    setActiveTab(route.tab === "agents" ? "agents" : "now");
+  }, [route]);
+
+  const handleTabChange = (tab: TabKey) => {
+    if (tab === "agents") {
+      window.location.hash = "#/agents";
+      return;
+    }
+
+    setActiveTab(tab);
+    if (route.tab === "agents") {
+      window.location.hash = "";
+    }
+  };
   // 活动 tab 现为单流(事件 + 动作合并);筛选 checkbox 在 ActivityFeed 内部,不占 App state。
   const [editingPerson, setEditingPerson] = useState<Person | null | undefined>(
     undefined,
@@ -468,6 +544,10 @@ function MainApp() {
           </div>
         );
       }
+      case "agents":
+        return route.tab === "agents" ? (
+          <AgentsPage registry={agentPanelRegistry} route={route} />
+        ) : null;
       case "usage":
         return <UsagePage />;
     }
@@ -478,7 +558,7 @@ function MainApp() {
       {/* 左 Sidebar 固定不滚动:内部 nav 自己 overflow-y-auto,米家头像固定在 left-bottom */}
       <Sidebar
         active={activeTab}
-        onChange={setActiveTab}
+        onChange={handleTabChange}
         miot={status.data?.miot}
         onOpenMiotBind={() => setMiotBindOpen(true)}
         onMiotChanged={() => window.location.reload()}
@@ -603,7 +683,7 @@ function MainApp() {
         <div className="md:hidden shrink-0">
           <MobileTabBar
             active={activeTab}
-            onChange={setActiveTab}
+            onChange={handleTabChange}
             miot={status.data?.miot}
             onOpenMiotBind={() => setMiotBindOpen(true)}
             onMiotChanged={() => window.location.reload()}

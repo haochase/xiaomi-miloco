@@ -149,6 +149,100 @@ export interface Scene {
   name: string;
 }
 
+// ── Outfit history ────────────────────────────────────────────────────────
+export type OutfitMomentTagReviewStatus =
+  | "pending"
+  | "confirmed"
+  | "edited"
+  | "rejected";
+
+export interface OutfitMomentTag {
+  id: string;
+  momentId: string;
+  type: string;
+  label: string;
+  narrative: string;
+  evidenceSignalIds: string[];
+  source: "rule" | "model" | "user";
+  confidence: number;
+  reviewStatus: OutfitMomentTagReviewStatus;
+  dedupeKey: string;
+  generatorVersion: string;
+}
+
+export interface OutfitMoment {
+  id: string;
+  occurredAt: number;
+  timezone: string;
+  recommendationId: string;
+  confirmedWearEventId: string;
+  itemIds: string[];
+  sourceEventIds: string[];
+  mediaAssetIds: string[];
+  confirmedTags: OutfitMomentTag[];
+  pendingTags: OutfitMomentTag[];
+  userNote?: string;
+  createdAt: number;
+  projectionVersion: number;
+}
+
+export type OutfitWardrobeCategory =
+  | "top"
+  | "bottom"
+  | "dress"
+  | "outerwear"
+  | "shoes"
+  | "bag"
+  | "accessory";
+
+export type OutfitWardrobeSourceType = "manual" | "photo" | "product_link";
+
+export interface OutfitWardrobeDraft {
+  id: string;
+  name: string;
+  category: OutfitWardrobeCategory;
+  sourceType: OutfitWardrobeSourceType;
+  sourceReference: string;
+  createdAt: number;
+  status: "pending";
+}
+
+export interface OutfitWardrobeItem {
+  id: string;
+  name: string;
+  category: OutfitWardrobeCategory;
+  sourceType: OutfitWardrobeSourceType;
+  sourceReference: string;
+  confirmedAt: number;
+}
+
+export type OutfitRecommendationStatus =
+  | "needs_context"
+  | "ready"
+  | "insufficient_inventory";
+
+export interface OutfitRecommendationOption {
+  id: string;
+  itemIds: string[];
+  compositionType: "top_bottom_shoes" | "dress_shoes";
+}
+
+export interface OutfitRecommendation {
+  status: OutfitRecommendationStatus;
+  recommendationId?: string;
+  options: OutfitRecommendationOption[];
+  missingContext: string[];
+  inventoryHints: string[];
+}
+
+export interface OutfitWearConfirmation {
+  eventId: string;
+  momentId: string;
+  recommendationId: string;
+  itemIds: string[];
+  moment: OutfitMoment;
+}
+
 // ── 活动事件(meaningful_events)─────────────────────────────
 // 数据源:GET /api/events(perception/events_router).
 // 一次感知推理 = 一行 event;同窗口 N 摄像头合并 1 行,device_ids 记录本行真正相关的

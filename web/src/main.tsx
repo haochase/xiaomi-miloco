@@ -1,8 +1,13 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
+import { registerBuiltInAgentPanels } from "./agents/builtin";
+import { agentPanelRegistry } from "./agents/registry";
 import "./i18n";
 import { App } from "./App";
+import { registerPwa } from "./pwa/register";
 import "./styles/theme.css";
+
+registerBuiltInAgentPanels(agentPanelRegistry);
 
 // 主题决议优先级：URL ?theme= > localStorage > 跟随系统（不设 data-theme）。
 // URL ?theme=dark / ?theme=light 是**临时覆盖**（截图 / 工程调试 / 临时看一眼），
@@ -24,3 +29,5 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     <App />
   </React.StrictMode>,
 );
+
+registerPwa();

@@ -27,6 +27,7 @@ import {
   IconFamily,
   IconTasks,
   IconActivity,
+  IconAgents,
   IconUsage,
 } from "@/lib/navIcons";
 
@@ -36,6 +37,7 @@ export type TabKey =
   | "family"
   | "tasks"
   | "activity"
+  | "agents"
   | "usage";
 
 type NavIcon = ComponentType<SVGProps<SVGSVGElement> & { active?: boolean }>;
@@ -90,6 +92,12 @@ export const TABS: TabDef[] = [
     labelKey: "nav.activity",
     hintKey: "nav.activityHint",
     Icon: IconActivity,
+  },
+  {
+    key: "agents",
+    labelKey: "nav.agents",
+    hintKey: "nav.agentsHint",
+    Icon: IconAgents,
   },
   {
     key: "usage",
@@ -362,12 +370,14 @@ export function MobileTabBar({
             aria-current={on ? "true" : undefined}
             aria-label={t(tab.labelKey)}
             onClick={() => onChange(tab.key)}
-            className={`flex-1 min-w-[60px] flex flex-col items-center justify-center py-2 gap-0.5 transition-colors ${
+            className={`flex-1 min-w-0 flex flex-col items-center justify-center py-2 gap-0.5 transition-colors ${
               on ? "text-brand-primary" : "text-text-secondary"
             }`}
           >
             <Icon active={on} width={24} height={24} />
-            <span className="text-caption">{t(tab.labelKey)}</span>
+            <span className="text-[10px] leading-tight whitespace-nowrap">
+              {t(tab.labelKey)}
+            </span>
           </button>
         );
       })}
