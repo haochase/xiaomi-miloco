@@ -11,7 +11,7 @@ plugin surface, on a separate port and in a separate workspace.
 from __future__ import annotations
 
 import argparse
-import json
+import base64
 import os
 import re
 import secrets
@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import uvicorn
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, Response
 
 from miloco.life.outfit_host_composition import install_outfit_host_composition
@@ -38,6 +38,7 @@ _IMMUTABLE_PUBLIC_HEADERS = {
     "X-Content-Type-Options": "nosniff",
 }
 _HASHED_PUBLIC_ASSET = re.compile(r"^assets/.+-[A-Za-z0-9_-]{8,}\.(?:js|css)$")
+_BROWSER_AUTH_HEADERS = {"WWW-Authenticate": 'Basic realm="Miloco Outfit"'}
 
 
 @dataclass(frozen=True)
@@ -48,6 +49,8 @@ class OutfitPanelSidecarConfig:
     workspace_dir: Path | str
     primary_person_id: str
     token: str
+    browser_username: str
+    browser_password: str
 
 
 def build_outfit_panel_sidecar(
@@ -56,15 +59,37 @@ def build_outfit_panel_sidecar(
     clock_ms: Callable[[], int] | None = None,
 ) -> FastAPI:
     """Build an authenticated sidecar without loading host-control routes."""
-    static_dir, workspace_dir, owner, token = _resolve_config(config)
+    static_dir, workspace_dir, owner, token, browser_username, browser_password = (
+        _resolve_config(config)
+    )
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 
     def authenticate(
         authorization: str | None = Header(default=None),
     ) -> None:
-        expected = f"Bearer {token}"
-        if authorization is None or not secrets.compare_digest(authorization, expected):
-            raise HTTPException(status_code=401, detail="Invalid service token")
+        if not _is_api_authorized(
+            authorization,
+            token=token,
+            browser_username=browser_username,
+            browser_password=browser_password,
+        ):
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid sidecar credentials",
+                headers=_BROWSER_AUTH_HEADERS,
+            )
+
+    @app.middleware("http")
+    async def require_browser_auth(request: Request, call_next: Callable) -> Response:
+        if request.url.path == "/health" or request.url.path.startswith("/api/"):
+            return await call_next(request)
+        if not _matches_basic_auth(
+            request.headers.get("authorization"),
+            username=browser_username,
+            password=browser_password,
+        ):
+            return Response(status_code=401, headers=_BROWSER_AUTH_HEADERS)
+        return await call_next(request)
 
     @app.get("/health", include_in_schema=False)
     def health() -> dict[str, str]:
@@ -83,7 +108,11 @@ def build_outfit_panel_sidecar(
     if not result.installed:
         raise RuntimeError(f"Outfit sidecar installation failed: {result.reason}")
 
-    @app.get("/api/{unmatched_path:path}", include_in_schema=False)
+    @app.get(
+        "/api/{unmatched_path:path}",
+        include_in_schema=False,
+        dependencies=[Depends(authenticate)],
+    )
     def unknown_api(unmatched_path: str) -> None:
         raise HTTPException(status_code=404, detail="Sidecar API route not found")
 
@@ -92,18 +121,20 @@ def build_outfit_panel_sidecar(
         asset = _safe_asset(static_dir, panel_path)
         if asset is not None:
             return FileResponse(asset, headers=_asset_headers(panel_path))
-        return _panel_entry(static_dir, token)
+        return _panel_entry(static_dir)
 
     return app
 
 
 def _resolve_config(
     config: OutfitPanelSidecarConfig,
-) -> tuple[Path, Path, str, str]:
+) -> tuple[Path, Path, str, str, str, str]:
     static_dir = Path(config.static_dir).resolve()
     workspace_dir = Path(config.workspace_dir)
     owner = config.primary_person_id.strip()
     token = config.token.strip()
+    browser_username = config.browser_username.strip()
+    browser_password = config.browser_password.strip()
     if not static_dir.is_dir() or not (static_dir / _INDEX_NAME).is_file():
         raise ValueError("sidecar static_dir must contain index.html")
     if not workspace_dir.is_absolute():
@@ -112,8 +143,19 @@ def _resolve_config(
         raise ValueError("sidecar primary_person_id must not be blank")
     if not token:
         raise ValueError("sidecar token must not be blank")
+    if not browser_username:
+        raise ValueError("sidecar browser_username must not be blank")
+    if not browser_password:
+        raise ValueError("sidecar browser_password must not be blank")
     workspace_dir.mkdir(parents=True, exist_ok=True)
-    return static_dir, workspace_dir, owner, token
+    return (
+        static_dir,
+        workspace_dir,
+        owner,
+        token,
+        browser_username,
+        browser_password,
+    )
 
 
 def _safe_asset(static_dir: Path, panel_path: str) -> Path | None:
@@ -125,18 +167,46 @@ def _safe_asset(static_dir: Path, panel_path: str) -> Path | None:
     return candidate if candidate.is_file() else None
 
 
-def _panel_entry(static_dir: Path, token: str) -> HTMLResponse:
+def _panel_entry(static_dir: Path) -> HTMLResponse:
     html = (static_dir / _INDEX_NAME).read_text(encoding="utf-8")
     if _TOKEN_PLACEHOLDER not in html:
         raise RuntimeError("sidecar index.html has no Miloco token placeholder")
-    injected = _TOKEN_PLACEHOLDER.replace(
-        '"__MILOCO_INJECT_TOKEN_HERE__"',
-        json.dumps(token),
-    )
-    html = html.replace(_TOKEN_PLACEHOLDER, injected, 1)
     marker = "window.__MILOCO_OUTFIT_SIDECAR__ = true;"
-    html = html.replace(injected, f"{injected}\n      {marker}", 1)
+    html = html.replace(_TOKEN_PLACEHOLDER, f"{_TOKEN_PLACEHOLDER}\n      {marker}", 1)
     return HTMLResponse(html, headers=_NO_STORE_HEADERS)
+
+
+def _is_api_authorized(
+    authorization: str | None,
+    *,
+    token: str,
+    browser_username: str,
+    browser_password: str,
+) -> bool:
+    expected_bearer = f"Bearer {token}"
+    return bool(
+        authorization
+        and (
+            secrets.compare_digest(authorization, expected_bearer)
+            or _matches_basic_auth(
+                authorization,
+                username=browser_username,
+                password=browser_password,
+            )
+        )
+    )
+
+
+def _matches_basic_auth(
+    authorization: str | None,
+    *,
+    username: str,
+    password: str,
+) -> bool:
+    expected = base64.b64encode(f"{username}:{password}".encode()).decode()
+    return bool(
+        authorization and secrets.compare_digest(authorization, f"Basic {expected}")
+    )
 
 
 def _asset_headers(panel_path: str) -> dict[str, str]:
@@ -167,6 +237,8 @@ def start_outfit_panel_sidecar() -> None:
             workspace_dir=_required_env("MILOCO_OUTFIT_PANEL_WORKSPACE"),
             primary_person_id=_required_env("MILOCO_OUTFIT_PANEL_PRIMARY_PERSON_ID"),
             token=_required_env("MILOCO_OUTFIT_PANEL_TOKEN"),
+            browser_username=_required_env("MILOCO_OUTFIT_PANEL_BROWSER_USERNAME"),
+            browser_password=_required_env("MILOCO_OUTFIT_PANEL_BROWSER_PASSWORD"),
         )
     )
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")

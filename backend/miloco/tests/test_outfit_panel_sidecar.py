@@ -34,28 +34,38 @@ def _client(tmp_path: Path) -> TestClient:
                 workspace_dir=tmp_path / "private-workspace",
                 primary_person_id="primary-person",
                 token="sidecar-test-token",
+                browser_username="outfit",
+                browser_password="sidecar-browser-password",
             ),
             clock_ms=lambda: 2_000,
         )
     )
 
 
-def test_sidecar_serves_no_store_panel_entry_and_authenticated_outfit_api(
+def test_sidecar_requires_browser_auth_and_never_injects_api_token(
     tmp_path: Path,
 ) -> None:
     client = _client(tmp_path)
 
-    page = client.get("/")
+    unauthenticated_page = client.get("/")
+    assert unauthenticated_page.status_code == 401
+    assert unauthenticated_page.headers["www-authenticate"].startswith("Basic ")
+
+    page = client.get("/", auth=("outfit", "sidecar-browser-password"))
     assert page.status_code == 200
     assert page.headers["cache-control"] == "private, no-store"
     assert page.headers["x-content-type-options"] == "nosniff"
-    assert "sidecar-test-token" in page.text
-    assert "__MILOCO_INJECT_TOKEN_HERE__" not in page.text
+    assert "sidecar-test-token" not in page.text
+    assert "__MILOCO_INJECT_TOKEN_HERE__" in page.text
     assert "__MILOCO_OUTFIT_SIDECAR__ = true" in page.text
     assert client.get("/api/outfit/capabilities").status_code == 401
     assert client.get("/api/outfit/capabilities", headers=_headers()).json()[
         "data"
     ] == [{"id": "outfit_v2", "enabled": True, "api_version": "v1"}]
+    assert client.get(
+        "/api/outfit/capabilities",
+        auth=("outfit", "sidecar-browser-password"),
+    ).json()["data"] == [{"id": "outfit_v2", "enabled": True, "api_version": "v1"}]
 
 
 def test_sidecar_keeps_history_routes_in_the_panel_and_exposes_no_host_api(
@@ -63,7 +73,13 @@ def test_sidecar_keeps_history_routes_in_the_panel_and_exposes_no_host_api(
 ) -> None:
     client = _client(tmp_path)
 
-    assert client.get("/agents/outfit/moments").status_code == 200
+    assert (
+        client.get(
+            "/agents/outfit/moments", auth=("outfit", "sidecar-browser-password")
+        ).status_code
+        == 200
+    )
+    assert client.get("/api/devices").status_code == 401
     assert client.get("/api/devices", headers=_headers()).status_code == 404
     assert client.get("/health").json() == {
         "status": "ok",
@@ -96,12 +112,16 @@ def test_sidecar_only_allows_immutable_cache_headers_for_hashed_public_assets(
                 workspace_dir=tmp_path / "private-workspace",
                 primary_person_id="primary-person",
                 token="sidecar-test-token",
+                browser_username="outfit",
+                browser_password="sidecar-browser-password",
             )
         )
     )
 
-    asset = client.get("/assets/index-abcdef12.js")
-    service_worker = client.get("/sw.js")
+    asset = client.get(
+        "/assets/index-abcdef12.js", auth=("outfit", "sidecar-browser-password")
+    )
+    service_worker = client.get("/sw.js", auth=("outfit", "sidecar-browser-password"))
 
     assert asset.headers["cache-control"] == "public, max-age=31536000, immutable"
     assert asset.headers["x-content-type-options"] == "nosniff"
