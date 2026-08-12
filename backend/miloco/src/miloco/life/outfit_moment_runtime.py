@@ -15,7 +15,16 @@ from miloco.life.outfit_media_repo import OutfitMediaRepo
 from miloco.life.outfit_moment_repo import OutfitMomentRepo
 from miloco.life.outfit_moment_service import OutfitMomentService
 from miloco.life.outfit_moments import OutfitMoment
+from miloco.life.outfit_recommendation_repo import OutfitRecommendationRepo
+from miloco.life.outfit_recommendation_service import OutfitRecommendationService
+from miloco.life.outfit_recommendations import (
+    ConfirmedOutfitWear,
+    OutfitRecommendationResult,
+    OutfitScenarioInput,
+)
 from miloco.life.outfit_storage import OutfitStorage
+from miloco.life.outfit_wardrobe_repo import OutfitWardrobeRepo
+from miloco.life.outfit_wardrobe_service import OutfitWardrobeService
 
 
 @dataclass(frozen=True)
@@ -33,6 +42,8 @@ class OutfitMomentRuntime:
     moment_repo: OutfitMomentRepo
     media_repo: OutfitMediaRepo
     moment_service: OutfitMomentService
+    wardrobe_service: OutfitWardrobeService
+    recommendation_service: OutfitRecommendationService
 
     def project_confirmed_wear(self, *, event_id: str, timezone: str) -> OutfitMoment:
         """Project only the primary owner's previously confirmed wear fact."""
@@ -40,6 +51,31 @@ class OutfitMomentRuntime:
             event_id=event_id,
             owner_person_id=self.primary_person_id,
             timezone=timezone,
+        )
+
+    def recommend_outfit(
+        self,
+        scenario: OutfitScenarioInput,
+    ) -> OutfitRecommendationResult:
+        """Create an owner-bound inventory-only recommendation snapshot."""
+        return self.recommendation_service.recommend(scenario)
+
+    def confirm_recommended_wear(
+        self,
+        *,
+        recommendation_id: str,
+        option_id: str,
+        confirmation_id: str,
+        timezone: str,
+        confirmed_by_user: bool,
+    ) -> ConfirmedOutfitWear:
+        """Persist a user-confirmed option and project its historical moment."""
+        return self.recommendation_service.confirm_recommended_wear(
+            recommendation_id=recommendation_id,
+            option_id=option_id,
+            confirmation_id=confirmation_id,
+            timezone=timezone,
+            confirmed_by_user=confirmed_by_user,
         )
 
 
@@ -57,7 +93,17 @@ def build_outfit_moment_runtime(
     feedback_event_repo = OutfitFeedbackEventRepo(storage)
     moment_repo = OutfitMomentRepo(storage)
     media_repo = OutfitMediaRepo(storage, media_root)
+    wardrobe_service = OutfitWardrobeService(
+        OutfitWardrobeRepo(storage),
+        primary_person_id=primary_person_id,
+        clock_ms=clock_ms,
+    )
 
+    moment_service = OutfitMomentService(
+        feedback_event_repo,
+        moment_repo,
+        clock_ms=clock_ms,
+    )
     return OutfitMomentRuntime(
         primary_person_id=primary_person_id,
         database_path=database_path,
@@ -69,9 +115,14 @@ def build_outfit_moment_runtime(
         feedback_event_repo=feedback_event_repo,
         moment_repo=moment_repo,
         media_repo=media_repo,
-        moment_service=OutfitMomentService(
+        moment_service=moment_service,
+        wardrobe_service=wardrobe_service,
+        recommendation_service=OutfitRecommendationService(
+            OutfitRecommendationRepo(storage),
+            wardrobe_service,
             feedback_event_repo,
-            moment_repo,
+            moment_service,
+            primary_person_id=primary_person_id,
             clock_ms=clock_ms,
         ),
     )

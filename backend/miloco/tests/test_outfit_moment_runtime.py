@@ -92,6 +92,9 @@ def test_runtime_initializes_all_outfit_metadata_in_one_private_database(
         "outfit_moment",
         "outfit_moment_tag",
         "outfit_media_asset",
+        "outfit_wardrobe_draft",
+        "outfit_wardrobe_item",
+        "outfit_recommendation_snapshot",
     } <= tables
 
 
