@@ -209,6 +209,8 @@ class OutfitWardrobeRepo:
 
     def _init_schema(self) -> None:
         with self._connect() as conn:
+            if self._has_legacy_item_source_constraint(conn):
+                self._migrate_legacy_item_source_constraint(conn)
             conn.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS outfit_wardrobe_draft (
@@ -227,11 +229,64 @@ class OutfitWardrobeRepo:
                     source_reference TEXT NOT NULL,
                     confirmed_at_ms INTEGER NOT NULL,
                     payload_json TEXT NOT NULL,
-                    PRIMARY KEY (owner_person_id, item_id),
-                    UNIQUE (owner_person_id, source_type, source_reference)
+                    PRIMARY KEY (owner_person_id, item_id)
                 );
 
                 CREATE INDEX IF NOT EXISTS idx_outfit_wardrobe_item_owner
                 ON outfit_wardrobe_item(owner_person_id);
+
+                CREATE UNIQUE INDEX IF NOT EXISTS
+                idx_outfit_wardrobe_item_external_source
+                ON outfit_wardrobe_item(owner_person_id, source_type, source_reference)
+                WHERE source_type IN ('photo', 'product_link');
                 """
             )
+
+    def _has_legacy_item_source_constraint(self, conn) -> bool:
+        row = conn.execute(
+            """
+            SELECT sql FROM sqlite_master
+            WHERE type = 'table' AND name = 'outfit_wardrobe_item'
+            """
+        ).fetchone()
+        if row is None:
+            return False
+        schema_sql = "".join(str(row["sql"] or "").lower().split())
+        return "unique(owner_person_id,source_type,source_reference)" in schema_sql
+
+    def _migrate_legacy_item_source_constraint(self, conn) -> None:
+        conn.executescript(
+            """
+            ALTER TABLE outfit_wardrobe_item
+            RENAME TO outfit_wardrobe_item_legacy;
+
+            CREATE TABLE outfit_wardrobe_item (
+                owner_person_id TEXT NOT NULL,
+                item_id TEXT NOT NULL,
+                source_type TEXT NOT NULL,
+                source_reference TEXT NOT NULL,
+                confirmed_at_ms INTEGER NOT NULL,
+                payload_json TEXT NOT NULL,
+                PRIMARY KEY (owner_person_id, item_id)
+            );
+
+            INSERT INTO outfit_wardrobe_item (
+                owner_person_id,
+                item_id,
+                source_type,
+                source_reference,
+                confirmed_at_ms,
+                payload_json
+            )
+            SELECT
+                owner_person_id,
+                item_id,
+                source_type,
+                source_reference,
+                confirmed_at_ms,
+                payload_json
+            FROM outfit_wardrobe_item_legacy;
+
+            DROP TABLE outfit_wardrobe_item_legacy;
+            """
+        )

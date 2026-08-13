@@ -13,6 +13,7 @@ from miloco.life.outfit_wardrobe import (
     WardrobeCategory,
     WardrobeDraftInput,
     WardrobeItemDraft,
+    requires_exact_source_deduplication,
 )
 from miloco.life.outfit_wardrobe_repo import OutfitWardrobeRepo
 
@@ -59,7 +60,9 @@ class OutfitWardrobeService:
             return existing_item
         if draft.status != "pending":
             raise ValueError("wardrobe draft is no longer pending")
-        if self._repo.has_exact_source(
+        if requires_exact_source_deduplication(
+            draft.source_type
+        ) and self._repo.has_exact_source(
             self._primary_person_id,
             source_type=draft.source_type,
             source_reference=draft.source_reference,

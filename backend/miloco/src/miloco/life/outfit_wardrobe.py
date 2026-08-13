@@ -20,6 +20,15 @@ WardrobeCategory = Literal[
 ]
 WardrobeSourceType = Literal["manual", "photo", "product_link"]
 WardrobeDraftStatus = Literal["pending", "confirmed", "discarded"]
+EXACT_SOURCE_DEDUPLICATED_TYPES: frozenset[WardrobeSourceType] = frozenset(
+    {"photo", "product_link"}
+)
+
+
+def requires_exact_source_deduplication(source_type: WardrobeSourceType) -> bool:
+    """Return whether a source reference identifies one external asset."""
+
+    return source_type in EXACT_SOURCE_DEDUPLICATED_TYPES
 
 
 def _require_text(value: str) -> str:
