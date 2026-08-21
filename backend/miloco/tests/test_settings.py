@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import miloco.config.settings as settings_module
 import pytest
 from jsonschema import Draft202012Validator
 from miloco.config import SETTINGS_SCHEMA, get_settings, reset_settings
@@ -36,6 +37,11 @@ def _load_schema() -> dict:
 def test_schema_is_valid_draft_2020_12() -> None:
     schema = _load_schema()
     Draft202012Validator.check_schema(schema)
+
+
+def test_outfit_settings_is_publicly_exported() -> None:
+    """可选插件可显式导入 OutfitSettings，而不依赖内部模块实现。"""
+    assert "OutfitSettings" in settings_module.__all__
 
 
 def _collect_schema_fields(schema: dict, prefix: str = "") -> dict[str, dict]:
@@ -74,6 +80,27 @@ def _collect_pydantic_fields(
     return out
 
 
+def _schema_types(spec: dict) -> set[str] | None:
+    """将 JSON Schema 的 type 或 anyOf 规范化为类型集合。"""
+    field_type = spec.get("type")
+    if isinstance(field_type, str):
+        return {field_type}
+    if isinstance(field_type, list) and all(
+        isinstance(value, str) for value in field_type
+    ):
+        return set(field_type)
+
+    any_of = spec.get("anyOf")
+    if not isinstance(any_of, list):
+        return None
+    types = {
+        option["type"]
+        for option in any_of
+        if isinstance(option, dict) and isinstance(option.get("type"), str)
+    }
+    return types or None
+
+
 def test_pydantic_matches_settings_schema() -> None:
     """schema.json 中声明的每个字段都必须在 MilocoSettings 中存在且类型/默认值一致。"""
     schema = _load_schema()
@@ -87,9 +114,12 @@ def test_pydantic_matches_settings_schema() -> None:
             f"settings.schema.json 字段 {path} 未在 Pydantic 模型中出现"
         )
         pyd = pyd_fields[path]
-        if "type" in spec and spec.get("type") != "object":
-            assert pyd.get("type") == spec["type"], (
-                f"{path} 类型不匹配：schema={spec['type']} vs pydantic={pyd.get('type')}"
+        schema_types = _schema_types(spec)
+        if schema_types is not None and spec.get("type") != "object":
+            assert _schema_types(pyd) == schema_types, (
+                f"{path} 类型不匹配："
+                f"schema={sorted(schema_types)} vs "
+                f"pydantic={sorted(_schema_types(pyd) or set())}"
             )
         if "default" in spec:
             assert pyd.get("default") == spec["default"], (
@@ -136,6 +166,32 @@ def test_features_env_override(monkeypatch) -> None:
     s = get_settings()
     assert s.features.pet_recognition is True
     assert s.features.pet_head_grounding is True
+
+
+def test_outfit_feature_defaults() -> None:
+    """Outfit 默认关闭，且不预设主使用者。"""
+    outfit = get_settings().features.outfit
+    assert outfit.enabled is False
+    assert outfit.primary_person_id is None
+
+
+def test_outfit_feature_env_override_normalizes_primary_person_id(monkeypatch) -> None:
+    """嵌套环境变量可开启 Outfit，并将主使用者 ID 去除首尾空白。"""
+    monkeypatch.setenv("MILOCO_FEATURES__OUTFIT__ENABLED", "true")
+    monkeypatch.setenv("MILOCO_FEATURES__OUTFIT__PRIMARY_PERSON_ID", "  chase  ")
+    reset_settings()
+
+    outfit = get_settings().features.outfit
+    assert outfit.enabled is True
+    assert outfit.primary_person_id == "chase"
+
+
+def test_outfit_feature_normalizes_blank_primary_person_id_to_none() -> None:
+    """空白主使用者 ID 不使配置加载失败，而是归一为 None。"""
+    settings = MilocoSettings(
+        features={"outfit": {"enabled": True, "primary_person_id": "  \t  "}}
+    )
+    assert settings.features.outfit.primary_person_id is None
 
 
 def test_notify_dedup_window_default() -> None:

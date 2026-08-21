@@ -430,6 +430,10 @@ _DEFAULT_PERF_FIELD_LABELS: dict[str, str] = {
 class FeaturesSettings(BaseModel):
     """产品级实验性功能开关（默认关，住户在 web 显式开启）。"""
 
+    outfit: OutfitSettings = Field(
+        default_factory=lambda: OutfitSettings(),
+        description="Outfit 可选功能的启用状态与固定主使用者配置",
+    )
     pet_recognition: bool = Field(
         default=False,
         description=(
@@ -464,6 +468,26 @@ class FeaturesSettings(BaseModel):
             "pet_recognition 开启时有意义。内部调优参数，一般无需改动。"
         ),
     )
+
+
+class OutfitSettings(BaseModel):
+    """Outfit 可选功能的独立配置。"""
+
+    enabled: bool = Field(
+        default=False,
+        description="是否启用 Outfit 可选功能",
+    )
+    primary_person_id: str | None = Field(
+        default=None,
+        description="固定主使用者 ID；空白值归一为 null",
+    )
+
+    @field_validator("primary_person_id", mode="before")
+    @classmethod
+    def _normalize_primary_person_id(cls, value: str | None) -> str | None:
+        if isinstance(value, str):
+            return value.strip() or None
+        return value
 
 
 class DirectorySettings(BaseModel):
@@ -847,6 +871,7 @@ __all__ = [
     "DirectorySettings",
     "DispatcherSettings",
     "FeaturesSettings",
+    "OutfitSettings",
     "MilocoSettings",
     "MiotSettings",
     "ModelSettings",

@@ -109,6 +109,23 @@
       "additionalProperties": true,
       "description": "产品级实验性功能开关（默认关，住户在 web 显式开启）",
       "properties": {
+        "outfit": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Outfit 可选功能的启用状态与固定主使用者配置",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false,
+              "description": "是否启用 Outfit 可选功能"
+            },
+            "primary_person_id": {
+              "anyOf": [{"type": "string"}, {"type": "null"}],
+              "default": null,
+              "description": "固定主使用者 ID；空白值归一为 null"
+            }
+          }
+        },
         "pet_recognition": {
           "type": "boolean",
           "default": false,
