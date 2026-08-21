@@ -8,6 +8,13 @@
 
 import * as realImpl from "./real";
 import { apiFetch } from "./client";
+export {
+  requestVisualReview,
+  type VisualReviewErrorCode,
+  type VisualReviewResult,
+  type VisualReviewStatus,
+  type VisualReviewTrigger,
+} from "./outfit";
 import type {
   ActivityEvent,
   Device,
