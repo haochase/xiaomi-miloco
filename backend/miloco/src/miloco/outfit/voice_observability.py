@@ -6,9 +6,17 @@
 from __future__ import annotations
 
 import hashlib
+import time
+from collections.abc import Callable
 from typing import Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from miloco.plugins.audit import (
+    AuditEventWriter,
+    HostAuditEvent,
+    VersionedHmacDigestor,
+)
 
 VoiceAuditStage = Literal["recommendation", "delivery", "completed", "replay"]
 VoiceAuditStatus = Literal[
@@ -57,6 +65,46 @@ class VoiceTurnAuditPort(Protocol):
     async def record_voice_turn(self, record: VoiceTurnAuditRecord) -> None: ...
 
 
+class VoiceHostAuditAdapter:
+    """Convert transient Outfit voice digests into generic persistent HMAC facts."""
+
+    def __init__(
+        self,
+        *,
+        digestor: VersionedHmacDigestor,
+        writer: AuditEventWriter,
+        clock_ms: Callable[[], int] | None = None,
+    ) -> None:
+        self._digestor = digestor
+        self._writer = writer
+        self._clock_ms = clock_ms or _now_ms
+
+    async def record_voice_turn(self, record: VoiceTurnAuditRecord) -> None:
+        await self._writer.write(
+            HostAuditEvent(
+                request_event_digest=self._digestor.digest_event(
+                    record.event_id_digest
+                ),
+                device_digest=self._digestor.digest_device(
+                    record.source_device_id_digest
+                ),
+                flow="voice",
+                stage=record.stage,
+                status=record.status,
+                error_code=record.error_code,
+                elapsed_ms=record.elapsed_ms,
+                frame_count=0,
+                provider_call_count=0,
+                input_tokens=record.input_tokens,
+                output_tokens=record.output_tokens,
+                video_tokens=0,
+                total_tokens=record.input_tokens + record.output_tokens,
+                usage_complete=True,
+                created_at_ms=self._clock_ms(),
+            )
+        )
+
+
 def build_voice_turn_audit_record(
     *,
     event_id: str,
@@ -93,3 +141,7 @@ def build_voice_turn_audit_record(
 
 def _digest(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()[:16]
+
+
+def _now_ms() -> int:
+    return time.time_ns() // 1_000_000

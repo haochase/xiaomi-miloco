@@ -145,6 +145,8 @@ class OutfitVisualReviewService:
                 outcome=outcome,
                 started_ns=started_ns,
                 usage=None,
+                provider_call_count=0,
+                usage_complete=False,
             )
             return outcome
 
@@ -174,6 +176,8 @@ class OutfitVisualReviewService:
                 outcome=outcome,
                 started_ns=started_ns,
                 usage=None,
+                provider_call_count=0,
+                usage_complete=False,
             )
             return outcome
         if admission.lease is None:
@@ -259,6 +263,26 @@ class OutfitVisualReviewService:
             )
             cancelled = cancelled or finalizer_cancelled
         if cancelled:
+            provider_call_count = int(provider_started.is_set())
+            cancellation_outcome = VisualReviewOutcome(
+                status=(
+                    VisualReviewStatus.PROVIDER_FAILED
+                    if provider_call_count
+                    else VisualReviewStatus.CAPTURE_FAILED
+                ),
+                error_code="request_cancelled",
+            )
+            await self._record_audit(
+                request=request,
+                stage="provider" if provider_call_count else "capture",
+                frame_count=1 if frame is not None else 0,
+                budget_outcome="allowed",
+                outcome=cancellation_outcome,
+                started_ns=started_ns,
+                usage=usage,
+                provider_call_count=provider_call_count,
+                usage_complete=usage is not None,
+            )
             raise asyncio.CancelledError
         if outcome is None:
             raise RuntimeError("visual review ended without a terminal outcome")
@@ -270,6 +294,8 @@ class OutfitVisualReviewService:
             outcome=outcome,
             started_ns=started_ns,
             usage=usage,
+            provider_call_count=int(provider_started.is_set()),
+            usage_complete=usage is not None,
         )
         return outcome
 
@@ -351,6 +377,8 @@ class OutfitVisualReviewService:
         outcome: VisualReviewOutcome,
         started_ns: int,
         usage: VisionProviderUsage | None,
+        provider_call_count: int,
+        usage_complete: bool,
     ) -> None:
         if self._audit is None:
             return
@@ -367,6 +395,8 @@ class OutfitVisualReviewService:
             input_tokens=usage.input_tokens if usage is not None else 0,
             output_tokens=usage.output_tokens if usage is not None else 0,
             video_tokens=usage.video_tokens if usage is not None else 0,
+            provider_call_count=provider_call_count,
+            usage_complete=usage_complete,
         )
         await self._run_audit_operation(self._audit.record_visual_review(record))
 

@@ -36,13 +36,20 @@ def _observation(
     confidence: float,
     status: str = "observed",
     uncertainty_reason: str | None = None,
+    input_tokens: int = 8,
+    output_tokens: int = 2,
+    video_tokens: int = 0,
 ) -> VisionProviderObservation:
     return VisionProviderObservation(
         observed_item_ids=observed_item_ids,
         confidence=confidence,
         status=status,
         uncertainty_reason=uncertainty_reason,
-        usage={"input_tokens": 8, "output_tokens": 2, "video_tokens": 0},
+        usage={
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "video_tokens": video_tokens,
+        },
     )
 
 
@@ -176,6 +183,7 @@ class _CancelOnceProvider(_RecordingProvider):
 class _HangingProvider(OutfitVisionProvider):
     def __init__(self) -> None:
         self.calls = 0
+        self.started = asyncio.Event()
 
     async def observe(
         self,
@@ -185,6 +193,7 @@ class _HangingProvider(OutfitVisionProvider):
         max_tokens: int,
     ) -> VisionProviderObservation:
         self.calls += 1
+        self.started.set()
         await asyncio.Event().wait()
 
 
@@ -556,10 +565,12 @@ async def test_camera_offline_returns_capture_error_without_provider_or_cleanup(
         _observation(observed_item_ids=("navy-top",), confidence=0.95)
     )
     media_store = _RecordingMediaStore()
+    audit = _RecordingVisualAudit()
     service = OutfitVisualReviewService(
         capture=capture,
         provider=provider,
         temporary_media_store=media_store,
+        audit=audit,
         enabled=True,
         provider_timeout_s=1.0,
         budget_guard=_budget_guard(),
@@ -572,6 +583,8 @@ async def test_camera_offline_returns_capture_error_without_provider_or_cleanup(
     assert outcome.error_code == "capture_failed"
     assert provider.calls == []
     assert media_store.deleted_tokens == []
+    assert audit.records[0].provider_call_count == 0
+    assert audit.records[0].usage_complete is False
 
 
 @pytest.mark.asyncio
@@ -581,10 +594,12 @@ async def test_provider_timeout_returns_sanitized_error_and_still_deletes_frame(
     capture = _RecordingCapture()
     provider = _HangingProvider()
     media_store = _RecordingMediaStore()
+    audit = _RecordingVisualAudit()
     service = OutfitVisualReviewService(
         capture=capture,
         provider=provider,
         temporary_media_store=media_store,
+        audit=audit,
         enabled=True,
         provider_timeout_s=0.01,
         budget_guard=_budget_guard(),
@@ -600,6 +615,8 @@ async def test_provider_timeout_returns_sanitized_error_and_still_deletes_frame(
     assert rejected.error_code == "usage_unavailable"
     assert provider.calls == 1
     assert media_store.deleted_tokens == ["temporary-frame-token"]
+    assert audit.records[0].provider_call_count == 1
+    assert audit.records[0].usage_complete is False
 
 
 @pytest.mark.asyncio
@@ -636,10 +653,12 @@ async def test_cancelled_provider_attempt_cleans_frame_and_closes_session() -> N
         _observation(observed_item_ids=("navy-top",), confidence=0.95)
     )
     media_store = _RecordingMediaStore()
+    audit = _RecordingVisualAudit()
     service = OutfitVisualReviewService(
         capture=capture,
         provider=provider,
         temporary_media_store=media_store,
+        audit=audit,
         enabled=True,
         provider_timeout_s=1.0,
         budget_guard=_budget_guard(),
@@ -648,6 +667,14 @@ async def test_cancelled_provider_attempt_cleans_frame_and_closes_session() -> N
 
     with pytest.raises(asyncio.CancelledError):
         await service.evaluate(request=_request())
+
+    assert len(audit.records) == 1
+    record = audit.records[0]
+    assert record.stage == "provider"
+    assert record.status == "provider_failed"
+    assert record.error_code == "request_cancelled"
+    assert record.provider_call_count == 1
+    assert record.usage_complete is False
 
     rejected = await service.evaluate(request=_request())
 
@@ -793,6 +820,8 @@ async def test_terminal_review_records_one_sanitized_audit_event() -> None:
     assert record.status == "completed"
     assert record.request_id_digest != "visual-request-1"
     assert record.device_id_digest != "camera-1"
+    assert record.provider_call_count == 1
+    assert record.usage_complete is True
 
 
 @pytest.mark.asyncio
@@ -825,6 +854,8 @@ async def test_budget_rejection_records_rejected_audit_without_capture() -> None
     assert record.status == "rejected"
     assert record.frame_count == 0
     assert record.error_code == "token_budget_exceeded"
+    assert record.provider_call_count == 0
+    assert record.usage_complete is False
 
 
 @pytest.mark.asyncio
@@ -871,6 +902,8 @@ async def test_provider_failure_audit_records_provider_stage_without_raw_ids() -
     assert record.stage == "provider"
     assert record.status == "provider_failed"
     assert record.frame_count == 1
+    assert record.provider_call_count == 1
+    assert record.usage_complete is False
     assert "visual-request-1" not in record.model_dump_json()
     assert "camera-1" not in record.model_dump_json()
 
@@ -880,12 +913,14 @@ async def test_external_cancellation_waits_for_deletion_then_releases_budget_lea
     None
 ):
     media_store = _ShieldedMediaStore()
+    audit = _RecordingVisualAudit()
     service = OutfitVisualReviewService(
         capture=_RecordingCapture(),
         provider=_RecordingProvider(
             _observation(observed_item_ids=("navy-top",), confidence=0.95)
         ),
         temporary_media_store=media_store,
+        audit=audit,
         enabled=True,
         provider_timeout_s=1.0,
         budget_guard=_budget_guard(),
@@ -905,6 +940,16 @@ async def test_external_cancellation_waits_for_deletion_then_releases_budget_lea
     with pytest.raises(asyncio.CancelledError):
         await review_task
     assert media_store.deleted_tokens == ["temporary-frame-token"]
+    assert len(audit.records) == 1
+    record = audit.records[0]
+    assert record.stage == "provider"
+    assert record.status == "provider_failed"
+    assert record.error_code == "request_cancelled"
+    assert record.provider_call_count == 1
+    assert record.usage_complete is True
+    assert record.input_tokens == 8
+    assert record.output_tokens == 2
+    assert record.video_tokens == 0
 
     recovered = await service.evaluate(request=_request())
     assert recovered.status is VisualReviewStatus.COMPLETED
@@ -934,10 +979,12 @@ async def test_hanging_capture_is_cancelled_at_capture_deadline() -> None:
 
 @pytest.mark.asyncio
 async def test_overall_deadline_bounds_capture_plus_provider() -> None:
+    audit = _RecordingVisualAudit()
     service = OutfitVisualReviewService(
         capture=_SlowCapture(),
         provider=_HangingProvider(),
         temporary_media_store=_RecordingMediaStore(),
+        audit=audit,
         enabled=True,
         capture_timeout_s=1.0,
         provider_timeout_s=1.0,
@@ -950,6 +997,8 @@ async def test_overall_deadline_bounds_capture_plus_provider() -> None:
 
     assert outcome.status is VisualReviewStatus.PROVIDER_FAILED
     assert outcome.error_code == "overall_timeout"
+    assert audit.records[0].provider_call_count == 1
+    assert audit.records[0].usage_complete is False
 
 
 @pytest.mark.asyncio
@@ -975,6 +1024,40 @@ async def test_hard_provider_budget_is_enforced_and_actual_usage_is_audited() ->
     assert audit.records[0].input_tokens == 8
     assert audit.records[0].output_tokens == 2
     assert audit.records[0].video_tokens == 0
+    assert audit.records[0].provider_call_count == 1
+    assert audit.records[0].usage_complete is True
+
+
+@pytest.mark.asyncio
+async def test_zero_token_provider_usage_is_still_complete() -> None:
+    audit = _RecordingVisualAudit()
+    service = OutfitVisualReviewService(
+        capture=_RecordingCapture(),
+        provider=_RecordingProvider(
+            _observation(
+                observed_item_ids=("navy-top",),
+                confidence=0.95,
+                input_tokens=0,
+                output_tokens=0,
+                video_tokens=0,
+            )
+        ),
+        temporary_media_store=_RecordingMediaStore(),
+        audit=audit,
+        enabled=True,
+        provider_timeout_s=1.0,
+        budget_guard=_budget_guard(),
+        now_ms=lambda: 1_100,
+    )
+
+    outcome = await service.evaluate(request=_request())
+
+    assert outcome.status is VisualReviewStatus.COMPLETED
+    assert audit.records[0].provider_call_count == 1
+    assert audit.records[0].usage_complete is True
+    assert audit.records[0].input_tokens == 0
+    assert audit.records[0].output_tokens == 0
+    assert audit.records[0].video_tokens == 0
 
 
 @pytest.mark.asyncio
@@ -989,10 +1072,12 @@ async def test_invalid_or_over_budget_actual_usage_fails_before_actionable_resul
     provider: object,
     error_code: str,
 ) -> None:
+    audit = _RecordingVisualAudit()
     service = OutfitVisualReviewService(
         capture=_RecordingCapture(),
         provider=provider,
         temporary_media_store=_RecordingMediaStore(),
+        audit=audit,
         enabled=True,
         provider_timeout_s=1.0,
         budget_guard=_budget_guard(),
@@ -1005,6 +1090,8 @@ async def test_invalid_or_over_budget_actual_usage_fails_before_actionable_resul
     assert outcome.error_code == error_code
     assert outcome.comparison is None
     assert outcome.correction is None
+    assert audit.records[0].provider_call_count == 1
+    assert audit.records[0].usage_complete is (error_code != "usage_unavailable")
 
 
 @pytest.mark.asyncio
@@ -1062,6 +1149,8 @@ async def test_semantic_provider_rejection_reconciles_and_audits_actual_usage() 
     assert audit.records[0].input_tokens == 7
     assert audit.records[0].output_tokens == 2
     assert audit.records[0].video_tokens == 1
+    assert audit.records[0].provider_call_count == 1
+    assert audit.records[0].usage_complete is True
     assert "private-unknown-item" not in audit.records[0].model_dump_json()
     assert next_admission.allowed is False
     assert next_admission.reason == "token_budget_exceeded"
@@ -1161,10 +1250,12 @@ async def test_cancel_race_recovers_and_deletes_a_completed_capture() -> None:
         _observation(observed_item_ids=("navy-top",), confidence=0.95)
     )
     media_store = _RecordingMediaStore()
+    audit = _RecordingVisualAudit()
     service = OutfitVisualReviewService(
         capture=capture,
         provider=provider,
         temporary_media_store=media_store,
+        audit=audit,
         enabled=True,
         capture_timeout_s=1.0,
         provider_timeout_s=1.0,
@@ -1180,6 +1271,73 @@ async def test_cancel_race_recovers_and_deletes_a_completed_capture() -> None:
         await review_task
     assert provider.calls == []
     assert media_store.deleted_tokens == ["late-captured-frame-token"]
+    assert len(audit.records) == 1
+    record = audit.records[0]
+    assert record.stage == "capture"
+    assert record.status == "capture_failed"
+    assert record.error_code == "request_cancelled"
+    assert record.provider_call_count == 0
+    assert record.usage_complete is False
+
+
+@pytest.mark.asyncio
+async def test_external_cancellation_during_provider_is_audited_then_propagated() -> (
+    None
+):
+    provider = _HangingProvider()
+    media_store = _RecordingMediaStore()
+    audit = _RecordingVisualAudit()
+    service = OutfitVisualReviewService(
+        capture=_RecordingCapture(),
+        provider=provider,
+        temporary_media_store=media_store,
+        audit=audit,
+        enabled=True,
+        provider_timeout_s=1.0,
+        budget_guard=_budget_guard(),
+        now_ms=lambda: 1_100,
+    )
+    review_task = asyncio.create_task(service.evaluate(request=_request()))
+    await provider.started.wait()
+
+    review_task.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await review_task
+    assert media_store.deleted_tokens == ["temporary-frame-token"]
+    assert len(audit.records) == 1
+    record = audit.records[0]
+    assert record.stage == "provider"
+    assert record.status == "provider_failed"
+    assert record.error_code == "request_cancelled"
+    assert record.provider_call_count == 1
+    assert record.usage_complete is False
+
+
+@pytest.mark.asyncio
+async def test_cancelled_provider_audit_timeout_does_not_block_propagation() -> None:
+    audit = _HangingVisualAudit()
+    service = OutfitVisualReviewService(
+        capture=_RecordingCapture(),
+        provider=_CancelOnceProvider(
+            _observation(observed_item_ids=("navy-top",), confidence=0.95)
+        ),
+        temporary_media_store=_RecordingMediaStore(),
+        audit=audit,
+        enabled=True,
+        provider_timeout_s=1.0,
+        audit_timeout_s=0.01,
+        budget_guard=_budget_guard(),
+        now_ms=lambda: 1_100,
+    )
+    review_task = asyncio.create_task(service.evaluate(request=_request()))
+
+    completed, _ = await asyncio.wait({review_task}, timeout=0.2)
+
+    assert review_task in completed
+    with pytest.raises(asyncio.CancelledError):
+        await review_task
+    assert audit.cancelled is True
 
 
 @pytest.mark.asyncio
