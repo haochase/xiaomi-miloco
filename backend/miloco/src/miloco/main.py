@@ -61,6 +61,8 @@ from miloco.perception.events_router import router as events_router
 from miloco.perception.router import router as perception_router
 from miloco.person.router import router as person_router
 from miloco.pet.router import router as pet_router
+from miloco.plugins.builtin import build_builtin_plugin_factories
+from miloco.plugins.host_composition import HostPluginRuntime
 from miloco.rule.router import router as rule_router
 from miloco.schedule.router import router as schedule_router
 from miloco.schedule.runner import get_runner as get_schedule_runner
@@ -377,6 +379,17 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         logger.error("Manager initialization failed: %s", e)
         raise
 
+    try:
+        plugin_factories = build_builtin_plugin_factories(
+            settings,
+            get_manager().person_service,
+        )
+        plugin_runtime = HostPluginRuntime(plugin_factories)
+        _app.state.plugin_runtime = plugin_runtime
+        await plugin_runtime.start(_app)
+    except Exception:
+        logger.warning("plugin_runtime_start_failed")
+
     # Start monitoring threads after manager.initialize() completes
     mon = get_monitor()
     watchdog = WatchdogTask(mon)
@@ -430,6 +443,12 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
     # Shutdown
     logger.info("Application is shutting down...")
+
+    if hasattr(_app.state, "plugin_runtime"):
+        try:
+            await _app.state.plugin_runtime.stop(_app)
+        except Exception:
+            logger.warning("plugin_runtime_stop_failed")
 
     watchdog.enter_shutdown()
 
