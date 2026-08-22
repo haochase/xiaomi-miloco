@@ -55,20 +55,42 @@ import { IconMoon, IconSun } from "./lib/icons";
 import { useTheme } from "./hooks/useTheme";
 import { useTranslation } from "react-i18next";
 import { LanguageSwitcher } from "./components/LanguageSwitcher";
+import { AgentsPage } from "./components/agents/AgentsPage";
+import { builtinAgentRegistry } from "./agents/registry";
+import {
+  parseAppRoute,
+  serializeAppRoute,
+  type AgentsRoute,
+  type AppRoute,
+} from "./lib/appRoute";
 
-/** URL hash 是 #perf 时,App 整屏渲染性能调试视图,跳过主框架。 */
-function usePerfMode(): boolean {
-  const read = () => {
-    if (typeof window === "undefined") return false;
-    return window.location.hash === "#perf";
+function useAppRoute(): AppRoute {
+  const read = (): AppRoute => {
+    if (typeof window === "undefined") return { kind: "main" };
+    return parseAppRoute(window.location.hash);
   };
-  const [on, setOn] = useState<boolean>(read);
+  const [route, setRoute] = useState<AppRoute>(read);
+
   useEffect(() => {
-    const handler = () => setOn(read());
+    const handler = () => setRoute(read());
     window.addEventListener("hashchange", handler);
-    return () => window.removeEventListener("hashchange", handler);
+    window.addEventListener("popstate", handler);
+    return () => {
+      window.removeEventListener("hashchange", handler);
+      window.removeEventListener("popstate", handler);
+    };
   }, []);
-  return on;
+  return route;
+}
+
+function navigateToAppRoute(route: AppRoute): void {
+  const hash = serializeAppRoute(route);
+  if (window.location.hash === hash) return;
+
+  const url = new URL(window.location.href);
+  url.hash = hash;
+  window.history.pushState({}, "", url.toString());
+  window.dispatchEvent(new HashChangeEvent("hashchange"));
 }
 
 function PerfView() {
@@ -113,11 +135,12 @@ function PerfView() {
 /** 顶层切换器:debug mode 与主应用是两棵独立的 React 子树。
  *  这样切换时 hooks 序列不会发生数量变化,避免 Rules of Hooks 错误。 */
 export function App() {
-  const perfMode = usePerfMode();
-  return perfMode ? <PerfView /> : <MainApp />;
+  const route = useAppRoute();
+  if (route.kind === "perf") return <PerfView />;
+  return <MainApp agentsRoute={route.kind === "agents" ? route : undefined} />;
 }
 
-function MainApp() {
+function MainApp({ agentsRoute }: { agentsRoute?: AgentsRoute }) {
   const { t } = useTranslation();
   // ── 当前家 ────────────────────────────────────────
   // backend 多家庭未上线,前端 homeId 永远 "primary"。切家走 onSwitchHome 调
@@ -185,6 +208,10 @@ function MainApp() {
   // 已不展示时间；HeroNow 的 cam card 内部各自维护 1min 时钟。)
 
   const [activeTab, setActiveTab] = useState<TabKey>("now");
+  const successfulCapabilityIds = useMemo<ReadonlySet<string>>(
+    () => new Set<string>(),
+    [],
+  );
   // 活动 tab 现为单流(事件 + 动作合并);筛选 checkbox 在 ActivityFeed 内部,不占 App state。
   const [editingPerson, setEditingPerson] = useState<Person | null | undefined>(
     undefined,
@@ -207,6 +234,16 @@ function MainApp() {
 
   // ── 主区 tab 内容渲染 ────────────────────────────────────
   const renderTab = () => {
+    if (agentsRoute) {
+      return (
+        <AgentsPage
+          registry={builtinAgentRegistry}
+          successfulCapabilityIds={successfulCapabilityIds}
+          agentId={agentsRoute.agentId}
+        />
+      );
+    }
+
     switch (activeTab) {
       case "now": {
         // scopeCameras 进错误聚合：listScopeCameras 失败时（米家 SDK 限频 -704 /
@@ -470,15 +507,33 @@ function MainApp() {
       }
       case "usage":
         return <UsagePage />;
+      case "agents":
+        return (
+          <AgentsPage
+            registry={builtinAgentRegistry}
+            successfulCapabilityIds={successfulCapabilityIds}
+          />
+        );
     }
+  };
+
+  const displayedTab = agentsRoute ? "agents" : activeTab;
+  const handleTabChange = (nextTab: TabKey) => {
+    if (nextTab === "agents") {
+      navigateToAppRoute({ kind: "agents" });
+      return;
+    }
+
+    setActiveTab(nextTab);
+    if (agentsRoute) navigateToAppRoute({ kind: "main" });
   };
 
   return (
     <div className="h-screen flex overflow-hidden bg-bg-primary text-text-primary">
       {/* 左 Sidebar 固定不滚动:内部 nav 自己 overflow-y-auto,米家头像固定在 left-bottom */}
       <Sidebar
-        active={activeTab}
-        onChange={setActiveTab}
+        active={displayedTab}
+        onChange={handleTabChange}
         miot={status.data?.miot}
         onOpenMiotBind={() => setMiotBindOpen(true)}
         onMiotChanged={() => window.location.reload()}
@@ -527,7 +582,7 @@ function MainApp() {
         />
 
         {/* omni 熔断器告警条(shrink-0):非 ok 时才渲染 */}
-        <OmniHealthBanner onGoToConfig={() => setActiveTab("usage")} />
+        <OmniHealthBanner onGoToConfig={() => handleTabChange("usage")} />
 
         {/* 状态条(shrink-0) */}
         {status.data && (
@@ -555,7 +610,7 @@ function MainApp() {
                 toast(e instanceof Error ? e.message : t("app.wakeFail"), "warn");
               }
             }}
-            onJumpDevices={() => setActiveTab("devices")}
+            onJumpDevices={() => handleTabChange("devices")}
             onRestartEngine={async () => {
               // 拆两段 try：pause 失败 → 引擎仍跑（无副作用）；resume 失败 →
               // 引擎已停下需要住户手动唤醒。两种 toast 文案不同避免割裂——
@@ -602,8 +657,8 @@ function MainApp() {
         {/* mobile 底部 tab bar(在主区底部,不会被 main 滚走) */}
         <div className="md:hidden shrink-0">
           <MobileTabBar
-            active={activeTab}
-            onChange={setActiveTab}
+            active={displayedTab}
+            onChange={handleTabChange}
             miot={status.data?.miot}
             onOpenMiotBind={() => setMiotBindOpen(true)}
             onMiotChanged={() => window.location.reload()}

@@ -1,0 +1,10 @@
+{
+  "agents": {
+    "title": "扩展",
+    "navHint": "可用扩展",
+    "empty": "暂无可用扩展",
+    "notFoundTitle": "扩展不可用",
+    "notFound": "未找到此扩展",
+    "back": "返回扩展"
+  }
+}

@@ -355,6 +355,56 @@ export const IconUsage = ({ active, ...p }: Props) =>
     </svg>
   );
 
+/** 扩展 — 四宫格 */
+export const IconAgents = ({ active, ...p }: Props) =>
+  active ? (
+    <svg {...baseSvg(p)}>
+      <rect x="6" y="6" width="15" height="15" rx="3" fill="currentColor" />
+      <rect x="27" y="6" width="15" height="15" rx="3" fill="currentColor" />
+      <rect x="6" y="27" width="15" height="15" rx="3" fill="currentColor" />
+      <rect x="27" y="27" width="15" height="15" rx="3" fill="currentColor" />
+    </svg>
+  ) : (
+    <svg {...baseSvg(p)}>
+      <rect
+        x="6"
+        y="6"
+        width="15"
+        height="15"
+        rx="3"
+        stroke="currentColor"
+        strokeWidth="4"
+      />
+      <rect
+        x="27"
+        y="6"
+        width="15"
+        height="15"
+        rx="3"
+        stroke="currentColor"
+        strokeWidth="4"
+      />
+      <rect
+        x="6"
+        y="27"
+        width="15"
+        height="15"
+        rx="3"
+        stroke="currentColor"
+        strokeWidth="4"
+      />
+      <rect
+        x="27"
+        y="27"
+        width="15"
+        height="15"
+        rx="3"
+        stroke="currentColor"
+        strokeWidth="4"
+      />
+    </svg>
+  );
+
 /** 任务 — 圆角方框 + 勾选（与其它 nav 图标同款「填充容器 + 白色字形」双态） */
 export const IconTasks = ({ active, ...p }: Props) =>
   active ? (

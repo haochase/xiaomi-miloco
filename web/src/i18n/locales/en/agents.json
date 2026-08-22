@@ -1,0 +1,10 @@
+{
+  "agents": {
+    "title": "Extensions",
+    "navHint": "Available extensions",
+    "empty": "No extensions are available",
+    "notFoundTitle": "Extension unavailable",
+    "notFound": "This extension was not found",
+    "back": "Back to extensions"
+  }
+}
