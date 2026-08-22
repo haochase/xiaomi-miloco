@@ -149,6 +149,8 @@ features:
   outfit:
     enabled: false             # Outfit 可选功能默认关闭
     primary_person_id: null    # 固定主使用者；空白值归一为 null
+    audit_hmac_key: null       # 审计 HMAC 密钥占位；真实密钥仅由 env / config.json 提供
+    audit_hmac_key_version: "v1" # 审计 HMAC 密钥版本
   pet_recognition: false       # 宠物识别（实验性）总开关；关闭时前端隐藏入口、后端不注入宠物命名规则，已录数据保留
   pet_head_grounding: true     # 宠物头像头部定位子开关（默认开）；关则用全身 crop，仅在 pet_recognition 开启时有意义（内部调优，一般无需改动）
   pet_body_grounding: true     # 宠物本体定位子开关（默认开）；仅回退路径（框不到猫狗）用，裁本体作参考图，关则回退不产参考 crop（内部调优，一般无需改动）

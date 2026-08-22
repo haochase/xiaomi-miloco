@@ -123,6 +123,20 @@
               "anyOf": [{"type": "string"}, {"type": "null"}],
               "default": null,
               "description": "固定主使用者 ID；空白值归一为 null"
+            },
+            "audit_hmac_key": {
+              "anyOf": [{"type": "string"}, {"type": "null"}],
+              "default": null,
+              "writeOnly": true,
+              "description": "Outfit 审计 HMAC 密钥；空白值归一为 null"
+            },
+            "audit_hmac_key_version": {
+              "type": "string",
+              "default": "v1",
+              "minLength": 1,
+              "maxLength": 32,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$",
+              "description": "Outfit 审计 HMAC 密钥版本"
             }
           }
         },

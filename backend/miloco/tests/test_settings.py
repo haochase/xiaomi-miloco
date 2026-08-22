@@ -16,6 +16,7 @@ from pathlib import Path
 
 import miloco.config.settings as settings_module
 import pytest
+import yaml
 from jsonschema import Draft202012Validator
 from miloco.config import SETTINGS_SCHEMA, get_settings, reset_settings
 from miloco.config.settings import MilocoSettings
@@ -173,6 +174,8 @@ def test_outfit_feature_defaults() -> None:
     outfit = get_settings().features.outfit
     assert outfit.enabled is False
     assert outfit.primary_person_id is None
+    assert outfit.audit_hmac_key is None
+    assert outfit.audit_hmac_key_version == "v1"
 
 
 def test_outfit_feature_env_override_normalizes_primary_person_id(monkeypatch) -> None:
@@ -192,6 +195,96 @@ def test_outfit_feature_normalizes_blank_primary_person_id_to_none() -> None:
         features={"outfit": {"enabled": True, "primary_person_id": "  \t  "}}
     )
     assert settings.features.outfit.primary_person_id is None
+
+
+def test_outfit_audit_secret_env_override_is_masked(monkeypatch) -> None:
+    secret = "h6-secret-value-that-is-at-least-32-bytes"
+    monkeypatch.setenv("MILOCO_FEATURES__OUTFIT__AUDIT_HMAC_KEY", secret)
+    monkeypatch.setenv(
+        "MILOCO_FEATURES__OUTFIT__AUDIT_HMAC_KEY_VERSION", " audit-v2 "
+    )
+    reset_settings()
+
+    settings = get_settings()
+    outfit = settings.features.outfit
+    assert outfit.audit_hmac_key is not None
+    assert outfit.audit_hmac_key.get_secret_value() == secret
+    assert outfit.audit_hmac_key_version == "audit-v2"
+    serialized_outputs = (
+        repr(settings),
+        repr(outfit),
+        repr(settings.model_dump()),
+        settings.model_dump_json(),
+        json.dumps(MilocoSettings.model_json_schema()),
+    )
+    assert all(secret not in output for output in serialized_outputs)
+
+
+def test_outfit_audit_blank_secret_normalizes_to_none() -> None:
+    settings = MilocoSettings(
+        features={"outfit": {"audit_hmac_key": "  \t  "}}
+    )
+
+    assert settings.features.outfit.audit_hmac_key is None
+
+
+@pytest.mark.parametrize(
+    "version",
+    ("", "   ", "unsafe version", "-leading", "v" * 33),
+)
+def test_outfit_audit_key_version_rejects_unsafe_values(version: str) -> None:
+    with pytest.raises(ValueError):
+        MilocoSettings(
+            features={"outfit": {"audit_hmac_key_version": version}}
+        )
+
+
+def test_outfit_audit_validation_error_masks_secret_input() -> None:
+    secret = "validation-secret-that-must-never-be-rendered"
+
+    with pytest.raises(ValueError) as exc_info:
+        MilocoSettings(
+            features={
+                "outfit": {
+                    "audit_hmac_key": secret,
+                    "audit_hmac_key_version": "unsafe version",
+                }
+            }
+        )
+
+    assert secret not in str(exc_info.value)
+    assert secret not in repr(exc_info.value)
+
+
+def test_outfit_audit_schema_and_yaml_contain_placeholders_only() -> None:
+    schema = _load_schema()
+    outfit_schema = schema["properties"]["features"]["properties"]["outfit"]
+    key_schema = outfit_schema["properties"]["audit_hmac_key"]
+    version_schema = outfit_schema["properties"]["audit_hmac_key_version"]
+    defaults = yaml.safe_load(
+        (Path(settings_module.__file__ or "").with_name("settings.yaml")).read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert _schema_types(key_schema) == {"string", "null"}
+    assert key_schema["default"] is None
+    assert key_schema["writeOnly"] is True
+    assert version_schema["default"] == "v1"
+    assert defaults["features"]["outfit"]["audit_hmac_key"] is None
+    assert defaults["features"]["outfit"]["audit_hmac_key_version"] == "v1"
+
+
+def test_outfit_database_paths_are_derived_beneath_absolute_workspace(
+    tmp_path: Path,
+) -> None:
+    settings = MilocoSettings(directories={"storage": str(tmp_path)})
+    root = settings.directories.workspace_dir / "outfit"
+    database_paths = tuple(root / name for name in ("wardrobe.db", "audit.db", "usage.db"))
+
+    assert root.is_absolute()
+    assert all(path.is_absolute() and path.parent == root for path in database_paths)
+    assert "database_path" not in settings.features.outfit.__class__.model_fields
 
 
 def test_notify_dedup_window_default() -> None:

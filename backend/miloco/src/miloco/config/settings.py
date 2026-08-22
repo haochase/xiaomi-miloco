@@ -20,7 +20,14 @@ from pathlib import Path
 from typing import Any, ClassVar, Literal
 
 import yaml
-from pydantic import BaseModel, Field, computed_field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    SecretStr,
+    computed_field,
+    field_validator,
+    model_validator,
+)
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -481,6 +488,17 @@ class OutfitSettings(BaseModel):
         default=None,
         description="固定主使用者 ID；空白值归一为 null",
     )
+    audit_hmac_key: SecretStr | None = Field(
+        default=None,
+        description="Outfit 审计 HMAC 密钥；空白值归一为 null",
+    )
+    audit_hmac_key_version: str = Field(
+        default="v1",
+        min_length=1,
+        max_length=32,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$",
+        description="Outfit 审计 HMAC 密钥版本",
+    )
 
     @field_validator("primary_person_id", mode="before")
     @classmethod
@@ -488,6 +506,22 @@ class OutfitSettings(BaseModel):
         if isinstance(value, str):
             return value.strip() or None
         return value
+
+    @field_validator("audit_hmac_key", mode="before")
+    @classmethod
+    def _normalize_audit_hmac_key(
+        cls, value: SecretStr | str | None
+    ) -> SecretStr | str | None:
+        if isinstance(value, SecretStr):
+            return value if value.get_secret_value().strip() else None
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
+    @field_validator("audit_hmac_key_version", mode="before")
+    @classmethod
+    def _normalize_audit_hmac_key_version(cls, value: str) -> str:
+        return value.strip() if isinstance(value, str) else value
 
 
 class DirectorySettings(BaseModel):
