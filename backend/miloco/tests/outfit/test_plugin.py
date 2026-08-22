@@ -10,13 +10,13 @@ from dataclasses import FrozenInstanceError, dataclass
 from pathlib import Path
 
 import pytest
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import APIRouter, FastAPI, HTTPException, Request
 from fastapi.testclient import TestClient
 from miloco.config.settings import OutfitSettings
 from miloco.middleware import verify_token
 from miloco.outfit import plugin as plugin_module
 from miloco.outfit.capability import OutfitProviderStatus
-from miloco.outfit.plugin import create_outfit_plugin_factory
+from miloco.outfit.plugin import OutfitRuntimeExtension, create_outfit_plugin_factory
 from miloco.plugins.primary_person import PrimaryPersonRef, PrimaryPersonResolver
 from miloco.plugins.registry import (
     HostPluginRegistry,
@@ -108,6 +108,7 @@ def _plugin_factory(
     database_path: Path = _SYNTHETIC_DATABASE_PATH,
     storage_factory: _StorageFactory | None = None,
     repository_factory: _RepositoryFactory | None = None,
+    runtime_extension_factory=None,
 ):
     counters = _SideEffectCounters()
     resolved_storage_factory = storage_factory or _StorageFactory()
@@ -121,8 +122,68 @@ def _plugin_factory(
         initial_provider_status=OutfitProviderStatus.NEVER_CALLED,
         storage_factory=resolved_storage_factory,
         repository_factory=resolved_repository_factory,
+        runtime_extension_factory=runtime_extension_factory,
     )
     return factory, resolved_storage_factory, resolved_repository_factory, counters
+
+
+def test_optional_runtime_extension_adds_routers_after_capability_and_stays_private() -> (
+    None
+):
+    settings = OutfitSettings(enabled=True, primary_person_id="chase")
+    person_service = _RecordingPersonService()
+    admin_router = APIRouter()
+
+    @admin_router.get("/api/outfit/admin/synthetic")
+    async def synthetic_admin() -> dict[str, bool]:
+        return {"ok": True}
+
+    private_resource = object()
+    extensions: list[OutfitRuntimeExtension] = []
+
+    def build_extension(primary_person, storage, repository):
+        assert primary_person == PrimaryPersonRef(person_id="chase")
+        assert storage.database_path == _SYNTHETIC_DATABASE_PATH
+        assert repository is not None
+        extension = OutfitRuntimeExtension(
+            routers=(admin_router,),
+            resources=(private_resource,),
+        )
+        extensions.append(extension)
+        return extension
+
+    factory, _, _, _ = _plugin_factory(
+        settings=settings,
+        person_service=person_service,
+        runtime_extension_factory=build_extension,
+    )
+    contribution = factory.build()
+
+    assert contribution.routers()[0].routes[0].path == "/api/outfit/capability"
+    assert contribution.routers()[1] is admin_router
+    assert len(extensions) == 1
+    with pytest.raises(FrozenInstanceError):
+        extensions[0].routers = ()  # type: ignore[misc]
+    assert not hasattr(contribution, "resources")
+    assert not hasattr(contribution, "runtime_extension")
+
+
+@pytest.mark.asyncio
+async def test_runtime_extension_failure_is_an_h2_build_failure() -> None:
+    def fail_extension(*_args):
+        raise RuntimeError("private-extension-secret")
+
+    factory, _, _, _ = _plugin_factory(
+        settings=OutfitSettings(enabled=True, primary_person_id="chase"),
+        person_service=_RecordingPersonService(),
+        runtime_extension_factory=fail_extension,
+    )
+    registry = HostPluginRegistry((factory,))
+
+    await registry.activate()
+
+    _assert_fixed_build_failure(registry)
+    assert "private-extension-secret" not in repr(registry.failures)
 
 
 @pytest.mark.asyncio
