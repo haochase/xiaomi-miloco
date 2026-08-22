@@ -1,5 +1,178 @@
 import { apiFetch } from "./client";
 
+const PROVIDER_STATUSES = new Set([
+  "never_called",
+  "last_success",
+  "last_error",
+  "budget_blocked",
+  "not_configured",
+] as const);
+
+const CAPABILITY_FIELDS = [
+  "enabled",
+  "primary_person_configured",
+  "storage_ready",
+  "voice_ingress_configured",
+  "camera_allowlisted",
+  "last_provider_status",
+] as const;
+
+const USAGE_FIELDS = [
+  "date",
+  "timezone",
+  "call_count",
+  "input_tokens",
+  "output_tokens",
+  "estimated_total_tokens",
+  "complete",
+] as const;
+
+export type OutfitProviderStatus =
+  | "never_called"
+  | "last_success"
+  | "last_error"
+  | "budget_blocked"
+  | "not_configured";
+
+export interface OutfitCapability {
+  enabled: boolean;
+  primaryPersonConfigured: boolean;
+  storageReady: boolean;
+  voiceIngressConfigured: boolean;
+  cameraAllowlisted: boolean;
+  lastProviderStatus: OutfitProviderStatus;
+}
+
+export interface OutfitUsageToday {
+  date: string;
+  timezone: "Asia/Shanghai";
+  callCount: number;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  estimatedTotalTokens: number | null;
+  complete: boolean;
+}
+
+type RecordPayload = Record<string, unknown>;
+
+function hasExactlyKeys(
+  value: unknown,
+  fields: readonly string[],
+): value is RecordPayload {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
+  }
+  const keys = Object.keys(value);
+  return keys.length === fields.length && fields.every((field) => keys.includes(field));
+}
+
+function isValidDate(value: unknown): value is string {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return false;
+  }
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
+function isNonNegativeSafeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+
+function parseOutfitCapability(response: unknown): OutfitCapability {
+  if (!hasExactlyKeys(response, CAPABILITY_FIELDS)) {
+    throw new Error("invalid outfit capability response");
+  }
+  const providerStatus = response.last_provider_status;
+  if (
+    typeof response.enabled !== "boolean" ||
+    typeof response.primary_person_configured !== "boolean" ||
+    typeof response.storage_ready !== "boolean" ||
+    typeof response.voice_ingress_configured !== "boolean" ||
+    typeof response.camera_allowlisted !== "boolean" ||
+    typeof providerStatus !== "string" ||
+    !PROVIDER_STATUSES.has(providerStatus as OutfitProviderStatus)
+  ) {
+    throw new Error("invalid outfit capability response");
+  }
+
+  return {
+    enabled: response.enabled,
+    primaryPersonConfigured: response.primary_person_configured,
+    storageReady: response.storage_ready,
+    voiceIngressConfigured: response.voice_ingress_configured,
+    cameraAllowlisted: response.camera_allowlisted,
+    lastProviderStatus: providerStatus as OutfitProviderStatus,
+  };
+}
+
+function parseOutfitUsageToday(response: unknown): OutfitUsageToday {
+  if (!hasExactlyKeys(response, USAGE_FIELDS)) {
+    throw new Error("invalid outfit usage response");
+  }
+  const { input_tokens, output_tokens, estimated_total_tokens } = response;
+  if (
+    !isValidDate(response.date) ||
+    response.timezone !== "Asia/Shanghai" ||
+    !isNonNegativeSafeInteger(response.call_count) ||
+    typeof response.complete !== "boolean"
+  ) {
+    throw new Error("invalid outfit usage response");
+  }
+
+  if (response.complete) {
+    if (
+      !isNonNegativeSafeInteger(input_tokens) ||
+      !isNonNegativeSafeInteger(output_tokens) ||
+      !isNonNegativeSafeInteger(estimated_total_tokens)
+    ) {
+      throw new Error("invalid outfit usage response");
+    }
+    return {
+      date: response.date,
+      timezone: "Asia/Shanghai",
+      callCount: response.call_count,
+      inputTokens: input_tokens,
+      outputTokens: output_tokens,
+      estimatedTotalTokens: estimated_total_tokens,
+      complete: true,
+    };
+  }
+
+  if (
+    input_tokens !== null ||
+    output_tokens !== null ||
+    estimated_total_tokens !== null
+  ) {
+    throw new Error("invalid outfit usage response");
+  }
+
+  return {
+    date: response.date,
+    timezone: "Asia/Shanghai",
+    callCount: response.call_count,
+    inputTokens: null,
+    outputTokens: null,
+    estimatedTotalTokens: null,
+    complete: false,
+  };
+}
+
+/** Read the authenticated, side-effect-free Outfit capability snapshot. */
+export async function getOutfitCapability(): Promise<OutfitCapability> {
+  const response = await apiFetch<unknown>("/api/outfit/capability", {
+    method: "GET",
+  });
+  return parseOutfitCapability(response);
+}
+
+/** Read the authenticated, local-day Outfit usage snapshot for diagnostics. */
+export async function getOutfitUsageToday(): Promise<OutfitUsageToday> {
+  const response = await apiFetch<unknown>("/api/outfit/admin/usage/today", {
+    method: "GET",
+  });
+  return parseOutfitUsageToday(response);
+}
+
 /** Backend terminal states exposed by the low-sensitivity visual trigger route. */
 export type VisualReviewStatus =
   | "completed"

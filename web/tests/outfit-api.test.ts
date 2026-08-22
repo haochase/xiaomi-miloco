@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  getOutfitCapability,
+  getOutfitUsageToday,
   requestVisualReview,
   type VisualReviewErrorCode,
   type VisualReviewStatus,
@@ -7,6 +9,33 @@ import {
 } from "@/api";
 
 const originalFetch = globalThis.fetch;
+const originalToken = window.__MILOCO_TOKEN__;
+
+const VALID_CAPABILITY = {
+  enabled: true,
+  primary_person_configured: true,
+  storage_ready: true,
+  voice_ingress_configured: false,
+  camera_allowlisted: true,
+  last_provider_status: "last_success",
+};
+
+const VALID_USAGE = {
+  date: "2026-08-22",
+  timezone: "Asia/Shanghai",
+  call_count: 2,
+  input_tokens: 13,
+  output_tokens: 5,
+  estimated_total_tokens: 21,
+  complete: true,
+};
+
+function jsonResponse(payload: unknown, status = 200): Response {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
 
 const VALID_TERMINAL_RESPONSES = [
   ["completed", null],
@@ -46,6 +75,103 @@ const INVALID_TERMINAL_RESPONSES = [
 afterEach(() => {
   vi.restoreAllMocks();
   globalThis.fetch = originalFetch;
+  window.__MILOCO_TOKEN__ = originalToken;
+});
+
+describe("Outfit capability and usage read contracts", () => {
+  it("gets the exact capability snapshot through a header-only GET", async () => {
+    let requestUrl: RequestInfo | URL | undefined;
+    let requestInit: RequestInit | undefined;
+    window.__MILOCO_TOKEN__ = "test-token";
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      requestUrl = input;
+      requestInit = init;
+      return jsonResponse(VALID_CAPABILITY);
+    }) as unknown as typeof fetch;
+
+    await expect(getOutfitCapability()).resolves.toEqual({
+      enabled: true,
+      primaryPersonConfigured: true,
+      storageReady: true,
+      voiceIngressConfigured: false,
+      cameraAllowlisted: true,
+      lastProviderStatus: "last_success",
+    });
+    expect(requestUrl).toBe("/api/outfit/capability");
+    expect(requestInit?.method).toBe("GET");
+    expect(requestInit?.body).toBeUndefined();
+    expect(new Headers(requestInit?.headers).get("Authorization")).toBe(
+      "Bearer test-token",
+    );
+  });
+
+  it.each([
+    ["an extra field", { ...VALID_CAPABILITY, owner_person_id: "private" }],
+    ["a missing field", { ...VALID_CAPABILITY, storage_ready: undefined }],
+    ["a non-boolean flag", { ...VALID_CAPABILITY, enabled: "yes" }],
+    ["an unsupported provider status", { ...VALID_CAPABILITY, last_provider_status: "busy" }],
+    ["a non-object payload", []],
+  ] as const)("rejects capability payloads with %s", async (_label, payload) => {
+    globalThis.fetch = vi.fn(async () => jsonResponse(payload)) as unknown as typeof fetch;
+
+    await expect(getOutfitCapability()).rejects.toThrow(
+      "invalid outfit capability response",
+    );
+  });
+
+  it("gets an incomplete usage snapshot as explicit unknown token values", async () => {
+    let requestUrl: RequestInfo | URL | undefined;
+    let requestInit: RequestInit | undefined;
+    window.__MILOCO_TOKEN__ = "usage-token";
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      requestUrl = input;
+      requestInit = init;
+      return jsonResponse({
+        ...VALID_USAGE,
+        input_tokens: null,
+        output_tokens: null,
+        estimated_total_tokens: null,
+        complete: false,
+      });
+    }) as unknown as typeof fetch;
+
+    await expect(getOutfitUsageToday()).resolves.toEqual({
+      date: "2026-08-22",
+      timezone: "Asia/Shanghai",
+      callCount: 2,
+      inputTokens: null,
+      outputTokens: null,
+      estimatedTotalTokens: null,
+      complete: false,
+    });
+    expect(requestUrl).toBe("/api/outfit/admin/usage/today");
+    expect(requestInit?.method).toBe("GET");
+    expect(requestInit?.body).toBeUndefined();
+    expect(new Headers(requestInit?.headers).get("Authorization")).toBe(
+      "Bearer usage-token",
+    );
+  });
+
+  it.each([
+    ["an extra field", { ...VALID_USAGE, private_model: "hidden" }],
+    ["an invalid date", { ...VALID_USAGE, date: "2026-02-30" }],
+    ["a different timezone", { ...VALID_USAGE, timezone: "UTC" }],
+    ["a negative count", { ...VALID_USAGE, call_count: -1 }],
+    ["a fractional token count", { ...VALID_USAGE, input_tokens: 0.5 }],
+    ["an unsafe integer", { ...VALID_USAGE, output_tokens: Number.MAX_SAFE_INTEGER + 1 }],
+    ["a complete response with a null token", { ...VALID_USAGE, input_tokens: null }],
+    [
+      "an incomplete response with a known token",
+      { ...VALID_USAGE, input_tokens: null, output_tokens: 2, estimated_total_tokens: null, complete: false },
+    ],
+    ["a non-object payload", []],
+  ] as const)("rejects usage payloads with %s", async (_label, payload) => {
+    globalThis.fetch = vi.fn(async () => jsonResponse(payload)) as unknown as typeof fetch;
+
+    await expect(getOutfitUsageToday()).rejects.toThrow(
+      "invalid outfit usage response",
+    );
+  });
 });
 
 describe("requestVisualReview — active panel trigger contract", () => {
