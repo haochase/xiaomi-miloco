@@ -56,7 +56,10 @@ import { useTheme } from "./hooks/useTheme";
 import { useTranslation } from "react-i18next";
 import { LanguageSwitcher } from "./components/LanguageSwitcher";
 import { AgentsPage } from "./components/agents/AgentsPage";
-import { builtinAgentRegistry } from "./agents/registry";
+import {
+  builtinAgentRegistry,
+  loadBuiltinAgentCapabilityIds,
+} from "./agents/builtin";
 import {
   parseAppRoute,
   serializeAppRoute,
@@ -208,10 +211,15 @@ function MainApp({ agentsRoute }: { agentsRoute?: AgentsRoute }) {
   // 已不展示时间；HeroNow 的 cam card 内部各自维护 1min 时钟。)
 
   const [activeTab, setActiveTab] = useState<TabKey>("now");
-  const successfulCapabilityIds = useMemo<ReadonlySet<string>>(
-    () => new Set<string>(),
+  const initialCapabilityIds = useMemo<ReadonlySet<string>>(
+    () => Object.freeze(new Set<string>()),
     [],
   );
+  const builtinCapabilities = useAsync(
+    () => loadBuiltinAgentCapabilityIds(),
+    [],
+  );
+  const successfulCapabilityIds = builtinCapabilities.data ?? initialCapabilityIds;
   // 活动 tab 现为单流(事件 + 动作合并);筛选 checkbox 在 ActivityFeed 内部,不占 App state。
   const [editingPerson, setEditingPerson] = useState<Person | null | undefined>(
     undefined,

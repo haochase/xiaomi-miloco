@@ -5,6 +5,73 @@
     "empty": "No extensions are available",
     "notFoundTitle": "Extension unavailable",
     "notFound": "This extension was not found",
-    "back": "Back to extensions"
+    "back": "Back to extensions",
+    "outfit": {
+      "title": "Outfit",
+      "loading": "Loading Outfit capability and diagnostics",
+      "loadFailed": "Outfit information is unavailable",
+      "loadCapabilityFailed": "capability",
+      "loadUsageFailed": "administrative usage",
+      "retry": "Retry",
+      "viewLabel": "Outfit views",
+      "views": {
+        "today": "Today",
+        "wardrobe": "Wardrobe",
+        "tryOn": "Try-on review"
+      },
+      "status": {
+        "yes": "Yes",
+        "no": "No"
+      },
+      "facts": {
+        "enabled": "Enabled",
+        "primaryPersonConfigured": "Primary person configured",
+        "storageReady": "Storage ready",
+        "voiceIngressConfigured": "Voice ingress configured",
+        "cameraAllowlisted": "Camera allowlisted",
+        "providerStatus": "Provider status"
+      },
+      "provider": {
+        "never_called": "Never called",
+        "last_success": "Last call succeeded",
+        "last_error": "Last call failed",
+        "budget_blocked": "Blocked by budget",
+        "not_configured": "Not configured"
+      },
+      "today": {
+        "title": "Today's recommendation",
+        "empty": "No recommendation is available"
+      },
+      "wardrobe": {
+        "title": "My wardrobe",
+        "storage": "Storage ready: {{status}}",
+        "empty": "No wardrobe items are available"
+      },
+      "review": {
+        "title": "Try-on review",
+        "noSelection": "No review selection is available",
+        "request": "Request visual review",
+        "unavailable": "Visual review is unavailable",
+        "status": {
+          "evaluating": "Evaluating",
+          "completed": "Completed",
+          "rejected": "Rejected",
+          "capture_failed": "Capture failed",
+          "provider_failed": "Provider failed",
+          "cleanup_failed": "Cleanup failed"
+        }
+      },
+      "admin": {
+        "title": "Administrative diagnostics",
+        "date": "Date",
+        "timezone": "Timezone",
+        "callCount": "Call count",
+        "inputTokens": "Input tokens",
+        "outputTokens": "Output tokens",
+        "estimatedTotalTokens": "Estimated total tokens",
+        "complete": "Usage complete",
+        "unknown": "Unknown"
+      }
+    }
   }
 }
