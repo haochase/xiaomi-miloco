@@ -248,7 +248,7 @@ async def test_registry_builds_and_publishes_outfit_once_without_get_side_effect
         (OutfitSettings(enabled=True), _RecordingPersonService()),
         (
             OutfitSettings(enabled=True, primary_person_id="unknown-person"),
-            _RecordingPersonService(),
+            _RecordingPersonService(exists=False),
         ),
         (
             OutfitSettings(enabled=True, primary_person_id="chase"),

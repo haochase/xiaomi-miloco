@@ -11,8 +11,6 @@ from typing import Protocol
 
 from miloco.config.settings import OutfitSettings
 
-_PRIMARY_PERSON_ID = "chase"
-
 
 class PersonLookup(Protocol):
     """解析器需要的最小人员服务能力。"""
@@ -46,7 +44,7 @@ class PrimaryPersonRef:
 
 
 class PrimaryPersonResolver:
-    """仅解析稳定主使用者 ``chase``，不提供任何身份回退。"""
+    """仅解析配置的稳定主使用者 ID，不提供任何身份回退。"""
 
     def __init__(self, outfit: OutfitSettings, person_service: PersonLookup) -> None:
         self._outfit = outfit
@@ -55,16 +53,13 @@ class PrimaryPersonResolver:
     def resolve(self) -> PrimaryPersonRef:
         if not self._outfit.enabled:
             raise PrimaryPersonResolutionError(PrimaryPersonErrorCode.DISABLED)
-        if self._outfit.primary_person_id is None:
+        person_id = self._outfit.primary_person_id
+        if person_id is None:
             raise PrimaryPersonResolutionError(
                 PrimaryPersonErrorCode.MISSING_PRIMARY_PERSON_ID
             )
-        if self._outfit.primary_person_id != _PRIMARY_PERSON_ID:
-            raise PrimaryPersonResolutionError(
-                PrimaryPersonErrorCode.UNKNOWN_PRIMARY_PERSON
-            )
         try:
-            person_exists = self._person_service.exists(_PRIMARY_PERSON_ID)
+            person_exists = self._person_service.exists(person_id)
         except Exception:
             raise PrimaryPersonResolutionError(
                 PrimaryPersonErrorCode.LOOKUP_FAILED
@@ -73,4 +68,4 @@ class PrimaryPersonResolver:
             raise PrimaryPersonResolutionError(
                 PrimaryPersonErrorCode.UNKNOWN_PRIMARY_PERSON
             )
-        return PrimaryPersonRef(person_id=_PRIMARY_PERSON_ID)
+        return PrimaryPersonRef(person_id=person_id)
