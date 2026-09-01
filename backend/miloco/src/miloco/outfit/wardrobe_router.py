@@ -17,6 +17,7 @@ from pydantic import ValidationError
 from miloco.middleware import verify_token
 from miloco.outfit.wardrobe import (
     ConfirmedWardrobeItem,
+    WardrobeCategory,
     WardrobeItemDraft,
     WardrobeSourceEvidence,
 )
@@ -43,7 +44,7 @@ class WardrobeHandler(Protocol):
         self,
         *,
         name: str,
-        category: str,
+        category: WardrobeCategory,
         source_evidence: tuple[WardrobeSourceEvidence, ...],
     ) -> WardrobeItemDraft: ...
 

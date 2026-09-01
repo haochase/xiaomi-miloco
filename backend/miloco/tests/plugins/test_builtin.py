@@ -103,7 +103,7 @@ print(json.dumps({
 
 
 @pytest.mark.asyncio
-async def test_enabled_factory_builds_three_derived_databases_and_two_routers_once(
+async def test_enabled_factory_builds_wardrobe_router_without_recommendation_once(
     tmp_path: Path,
 ) -> None:
     root = tmp_path / "enabled-home"
@@ -121,7 +121,13 @@ async def test_enabled_factory_builds_three_derived_databases_and_two_routers_on
     assert [route.routes[0].path for route in registry.routers] == [
         "/api/outfit/capability",
         "/api/outfit/admin/usage/today",
+        "/api/outfit/wardrobe/drafts",
     ]
+    assert not any(
+        route.path == "/api/outfit/recommendations"
+        for router in registry.routers
+        for route in router.routes
+    )
     capability = await registry.routers[0].routes[0].endpoint(Response())
     assert capability.last_provider_status.value == "not_configured"
     assert registry.panel_capabilities == ("outfit_v2",)

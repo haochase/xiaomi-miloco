@@ -60,6 +60,8 @@ def build_builtin_plugin_factories(
         from miloco.outfit.visual_observability import VisualHostAuditAdapter
         from miloco.outfit.voice_observability import VoiceHostAuditAdapter
         from miloco.outfit.wardrobe_repo import WardrobeRepository
+        from miloco.outfit.wardrobe_router import create_wardrobe_router
+        from miloco.outfit.wardrobe_service import WardrobeService
         from miloco.plugins.audit import BestEffortAuditWriter, VersionedHmacDigestor
         from miloco.plugins.audit_repo import AuditRepository
         from miloco.plugins.primary_person import PrimaryPersonResolver
@@ -80,9 +82,9 @@ def build_builtin_plugin_factories(
         )
 
         def build_runtime_extension(
-            _primary_person,
+            primary_person,
             _storage,
-            _wardrobe_repository,
+            wardrobe_repository,
         ) -> OutfitRuntimeExtension:
             configured_key = outfit_settings.audit_hmac_key
             if configured_key is None:
@@ -113,9 +115,15 @@ def build_builtin_plugin_factories(
                 digestor=digestor,
                 writer=fanout_writer,
             )
+            wardrobe_service = WardrobeService(
+                wardrobe_repository,
+                primary_person_id=primary_person.person_id,
+                clock_ms=lambda: time.time_ns() // 1_000_000,
+            )
             admin_router = create_outfit_admin_usage_router(usage_service=usage_service)
+            wardrobe_router = create_wardrobe_router(wardrobe_service=wardrobe_service)
             return OutfitRuntimeExtension(
-                routers=(admin_router,),
+                routers=(admin_router, wardrobe_router),
                 resources=(
                     audit_repository,
                     audit_writer,
@@ -125,6 +133,7 @@ def build_builtin_plugin_factories(
                     digestor,
                     voice_audit,
                     visual_audit,
+                    wardrobe_service,
                 ),
             )
 

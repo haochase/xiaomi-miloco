@@ -334,7 +334,7 @@ async def test_builtin_host_preserves_core_routes_when_outfit_is_unavailable(
 
 
 @pytest.mark.asyncio
-async def test_builtin_capability_and_usage_gets_are_authenticated_and_side_effect_free(
+async def test_builtin_wardrobe_reads_are_authenticated_and_side_effect_free(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -358,6 +358,7 @@ async def test_builtin_capability_and_usage_gets_are_authenticated_and_side_effe
         assert [router.routes[0].path for router in runtime.registry.routers] == [
             "/api/outfit/capability",
             "/api/outfit/admin/usage/today",
+            "/api/outfit/wardrobe/drafts",
         ]
         outfit_root = tmp_path / "host" / "outfit"
         file_tree_before = _outfit_file_tree(outfit_root)
@@ -386,6 +387,22 @@ async def test_builtin_capability_and_usage_gets_are_authenticated_and_side_effe
                 "/api/outfit/admin/usage/today",
                 headers=headers,
             )
+            pending = await client.get(
+                "/api/outfit/wardrobe/drafts",
+                headers=headers,
+            )
+            available = await client.get(
+                "/api/outfit/wardrobe/items/available",
+                headers=headers,
+            )
+            rejected = await client.post(
+                "/api/outfit/wardrobe/drafts",
+                headers=headers,
+                json={
+                    "owner_person_id": "spoofed-owner",
+                    "media_path": "E:/private/photo.jpg",
+                },
+            )
             health_after = await client.get("/health")
 
         await asyncio.sleep(0)
@@ -395,10 +412,18 @@ async def test_builtin_capability_and_usage_gets_are_authenticated_and_side_effe
         assert health_after.json()["visual_attempts"] == state.visual_attempts == 0
         assert capability_first.status_code == capability_second.status_code == 200
         assert usage_first.status_code == usage_second.status_code == 200
+        assert pending.status_code == available.status_code == 200
+        assert pending.json() == available.json() == []
+        assert rejected.status_code == 422
+        assert rejected.json() == {"detail": "invalid_outfit_request"}
         assert capability_first.json() == capability_second.json()
         assert usage_first.json() == usage_second.json()
         assert capability_first.headers["cache-control"] == "private, no-store"
         assert usage_first.headers["cache-control"] == "private, no-store"
+        assert pending.headers["cache-control"] == "private, no-store"
+        assert available.headers["cache-control"] == "private, no-store"
+        assert rejected.headers["cache-control"] == "private, no-store"
+        assert "/api/outfit/recommendations" not in _route_paths(app)
         assert tripwire == _SideEffectTripwire()
         assert _outfit_file_tree(outfit_root) == file_tree_before
         assert _route_paths(app) == route_paths_before

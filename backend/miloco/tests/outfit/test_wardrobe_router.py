@@ -12,6 +12,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.testclient import TestClient
 from miloco.outfit.wardrobe import (
     ConfirmedWardrobeItem,
+    WardrobeCategory,
     WardrobeItemDraft,
     WardrobeSourceEvidence,
 )
@@ -71,7 +72,7 @@ class _RecordingWardrobeService:
         self,
         *,
         name: str,
-        category: str,
+        category: WardrobeCategory,
         source_evidence: tuple[WardrobeSourceEvidence, ...],
     ) -> WardrobeItemDraft:
         self.calls.append(("create", (name, category, source_evidence)))

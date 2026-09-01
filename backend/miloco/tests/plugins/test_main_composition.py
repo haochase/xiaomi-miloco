@@ -187,10 +187,26 @@ async def test_enabled_builtin_routes_mount_once_before_spa_and_remove_on_shutdo
     paths = [getattr(route, "path", None) for route in app.router.routes]
     assert paths.count("/api/outfit/capability") == 1
     assert paths.count("/api/outfit/admin/usage/today") == 1
+    assert paths.count("/api/outfit/wardrobe/drafts") == 2
+    assert paths.count("/api/outfit/wardrobe/items/available") == 1
+    assert paths.count("/api/outfit/wardrobe/drafts/{draft_id}/confirm") == 1
+    assert "/api/outfit/recommendations" not in paths
     assert paths.index("/api/outfit/capability") < paths.index(
         "/api/outfit/admin/usage/today"
     )
-    assert paths.index("/api/outfit/admin/usage/today") < paths.index(
+    wardrobe_draft_indexes = [
+        index
+        for index, path in enumerate(paths)
+        if path == "/api/outfit/wardrobe/drafts"
+    ]
+    assert paths.index("/api/outfit/admin/usage/today") < wardrobe_draft_indexes[0]
+    assert wardrobe_draft_indexes[-1] < paths.index(
+        "/api/outfit/wardrobe/items/available"
+    )
+    assert paths.index("/api/outfit/wardrobe/items/available") < paths.index(
+        "/api/outfit/wardrobe/drafts/{draft_id}/confirm"
+    )
+    assert paths.index("/api/outfit/wardrobe/drafts/{draft_id}/confirm") < paths.index(
         "/{full_path:path}"
     )
 
@@ -202,3 +218,6 @@ async def test_enabled_builtin_routes_mount_once_before_spa_and_remove_on_shutdo
     assert "/{full_path:path}" in remaining_paths
     assert "/api/outfit/capability" not in remaining_paths
     assert "/api/outfit/admin/usage/today" not in remaining_paths
+    assert "/api/outfit/wardrobe/drafts" not in remaining_paths
+    assert "/api/outfit/wardrobe/items/available" not in remaining_paths
+    assert "/api/outfit/wardrobe/drafts/{draft_id}/confirm" not in remaining_paths
