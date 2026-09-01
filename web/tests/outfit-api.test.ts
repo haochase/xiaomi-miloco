@@ -2,11 +2,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   getOutfitCapability,
   getOutfitUsageToday,
+  getOutfitWardrobe,
   requestVisualReview,
   type VisualReviewErrorCode,
   type VisualReviewStatus,
   type VisualReviewTrigger,
-} from "@/api";
+} from "@/api/outfit";
 
 const originalFetch = globalThis.fetch;
 const originalToken = window.__MILOCO_TOKEN__;
@@ -29,6 +30,27 @@ const VALID_USAGE = {
   estimated_total_tokens: 21,
   complete: true,
 };
+
+const VALID_PENDING_DRAFTS = [
+  {
+    draft_id: "draft-1",
+    name: "Navy shirt",
+    category: "top",
+    source_types: ["photo"],
+    status: "pending",
+  },
+];
+
+const VALID_AVAILABLE_ITEMS = [
+  {
+    item_id: "item-1",
+    name: "Black trousers",
+    category: "bottom",
+    source_types: ["manual"],
+    status: "confirmed",
+    availability: "available",
+  },
+];
 
 function jsonResponse(payload: unknown, status = 200): Response {
   return new Response(JSON.stringify(payload), {
@@ -171,6 +193,67 @@ describe("Outfit capability and usage read contracts", () => {
     await expect(getOutfitUsageToday()).rejects.toThrow(
       "invalid outfit usage response",
     );
+  });
+});
+
+describe("Outfit wardrobe read contracts", () => {
+  it("reads the two owner-free wardrobe lists through header-only GET requests", async () => {
+    const requests: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
+    window.__MILOCO_TOKEN__ = "wardrobe-token";
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      requests.push([input, init]);
+      return jsonResponse(
+        input === "/api/outfit/wardrobe/drafts"
+          ? VALID_PENDING_DRAFTS
+          : VALID_AVAILABLE_ITEMS,
+      );
+    }) as unknown as typeof fetch;
+
+    await expect(getOutfitWardrobe()).resolves.toEqual({
+      pendingDrafts: [
+        {
+          draftId: "draft-1",
+          name: "Navy shirt",
+          category: "top",
+          sourceTypes: ["photo"],
+          status: "pending",
+        },
+      ],
+      availableItems: [
+        {
+          itemId: "item-1",
+          name: "Black trousers",
+          category: "bottom",
+          sourceTypes: ["manual"],
+          status: "confirmed",
+          availability: "available",
+        },
+      ],
+    });
+    expect(requests.map(([url]) => url)).toEqual([
+      "/api/outfit/wardrobe/drafts",
+      "/api/outfit/wardrobe/items/available",
+    ]);
+    for (const [, init] of requests) {
+      expect(init?.method).toBe("GET");
+      expect(init?.body).toBeUndefined();
+      expect(new Headers(init?.headers).get("Authorization")).toBe(
+        "Bearer wardrobe-token",
+      );
+    }
+  });
+
+  it.each([
+    ["a source reference", [{ ...VALID_PENDING_DRAFTS[0], source_reference: "private" }], VALID_AVAILABLE_ITEMS],
+    ["a wrong draft status", [{ ...VALID_PENDING_DRAFTS[0], status: "confirmed" }], VALID_AVAILABLE_ITEMS],
+    ["a wrong item availability", VALID_PENDING_DRAFTS, [{ ...VALID_AVAILABLE_ITEMS[0], availability: "laundry" }]],
+    ["a non-array payload", {}, VALID_AVAILABLE_ITEMS],
+  ] as const)("rejects wardrobe payloads with %s", async (_label, drafts, items) => {
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) =>
+      jsonResponse(input === "/api/outfit/wardrobe/drafts" ? drafts : items),
+    ) as unknown as typeof fetch;
+
+    await expect(getOutfitWardrobe()).rejects.toThrow("invalid outfit wardrobe response");
   });
 });
 

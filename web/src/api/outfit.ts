@@ -27,6 +27,39 @@ const USAGE_FIELDS = [
   "complete",
 ] as const;
 
+const WARDROBE_DRAFT_FIELDS = [
+  "draft_id",
+  "name",
+  "category",
+  "source_types",
+  "status",
+] as const;
+
+const WARDROBE_ITEM_FIELDS = [
+  "item_id",
+  "name",
+  "category",
+  "source_types",
+  "status",
+  "availability",
+] as const;
+
+const WARDROBE_CATEGORIES = new Set([
+  "top",
+  "bottom",
+  "dress",
+  "outerwear",
+  "shoes",
+  "bag",
+  "accessory",
+] as const);
+
+const WARDROBE_SOURCE_TYPES = new Set([
+  "manual",
+  "photo",
+  "product_link",
+] as const);
+
 export type OutfitProviderStatus =
   | "never_called"
   | "last_success"
@@ -53,6 +86,39 @@ export interface OutfitUsageToday {
   complete: boolean;
 }
 
+export type OutfitWardrobeCategory =
+  | "top"
+  | "bottom"
+  | "dress"
+  | "outerwear"
+  | "shoes"
+  | "bag"
+  | "accessory";
+
+export type OutfitWardrobeSourceType = "manual" | "photo" | "product_link";
+
+export interface OutfitWardrobeDraft {
+  draftId: string;
+  name: string;
+  category: OutfitWardrobeCategory;
+  sourceTypes: OutfitWardrobeSourceType[];
+  status: "pending";
+}
+
+export interface OutfitWardrobeItem {
+  itemId: string;
+  name: string;
+  category: OutfitWardrobeCategory;
+  sourceTypes: OutfitWardrobeSourceType[];
+  status: "confirmed";
+  availability: "available";
+}
+
+export interface OutfitWardrobe {
+  pendingDrafts: OutfitWardrobeDraft[];
+  availableItems: OutfitWardrobeItem[];
+}
+
 type RecordPayload = Record<string, unknown>;
 
 function hasExactlyKeys(
@@ -76,6 +142,78 @@ function isValidDate(value: unknown): value is string {
 
 function isNonNegativeSafeInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+
+function isNonEmptyText(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function parseOutfitWardrobeSourceTypes(
+  value: unknown,
+): OutfitWardrobeSourceType[] {
+  if (
+    !Array.isArray(value) ||
+    !value.every(
+      (sourceType) =>
+        typeof sourceType === "string" &&
+        WARDROBE_SOURCE_TYPES.has(sourceType as OutfitWardrobeSourceType),
+    )
+  ) {
+    throw new Error("invalid outfit wardrobe response");
+  }
+  return value as OutfitWardrobeSourceType[];
+}
+
+function parseOutfitWardrobeDrafts(response: unknown): OutfitWardrobeDraft[] {
+  if (!Array.isArray(response)) {
+    throw new Error("invalid outfit wardrobe response");
+  }
+  return response.map((draft) => {
+    if (
+      !hasExactlyKeys(draft, WARDROBE_DRAFT_FIELDS) ||
+      !isNonEmptyText(draft.draft_id) ||
+      !isNonEmptyText(draft.name) ||
+      typeof draft.category !== "string" ||
+      !WARDROBE_CATEGORIES.has(draft.category as OutfitWardrobeCategory) ||
+      draft.status !== "pending"
+    ) {
+      throw new Error("invalid outfit wardrobe response");
+    }
+    return {
+      draftId: draft.draft_id,
+      name: draft.name,
+      category: draft.category as OutfitWardrobeCategory,
+      sourceTypes: parseOutfitWardrobeSourceTypes(draft.source_types),
+      status: "pending",
+    };
+  });
+}
+
+function parseOutfitWardrobeItems(response: unknown): OutfitWardrobeItem[] {
+  if (!Array.isArray(response)) {
+    throw new Error("invalid outfit wardrobe response");
+  }
+  return response.map((item) => {
+    if (
+      !hasExactlyKeys(item, WARDROBE_ITEM_FIELDS) ||
+      !isNonEmptyText(item.item_id) ||
+      !isNonEmptyText(item.name) ||
+      typeof item.category !== "string" ||
+      !WARDROBE_CATEGORIES.has(item.category as OutfitWardrobeCategory) ||
+      item.status !== "confirmed" ||
+      item.availability !== "available"
+    ) {
+      throw new Error("invalid outfit wardrobe response");
+    }
+    return {
+      itemId: item.item_id,
+      name: item.name,
+      category: item.category as OutfitWardrobeCategory,
+      sourceTypes: parseOutfitWardrobeSourceTypes(item.source_types),
+      status: "confirmed",
+      availability: "available",
+    };
+  });
 }
 
 function parseOutfitCapability(response: unknown): OutfitCapability {
@@ -171,6 +309,18 @@ export async function getOutfitUsageToday(): Promise<OutfitUsageToday> {
     method: "GET",
   });
   return parseOutfitUsageToday(response);
+}
+
+/** Read pending and confirmed-available inventory without an owner selector. */
+export async function getOutfitWardrobe(): Promise<OutfitWardrobe> {
+  const [drafts, items] = await Promise.all([
+    apiFetch<unknown>("/api/outfit/wardrobe/drafts", { method: "GET" }),
+    apiFetch<unknown>("/api/outfit/wardrobe/items/available", { method: "GET" }),
+  ]);
+  return {
+    pendingDrafts: parseOutfitWardrobeDrafts(drafts),
+    availableItems: parseOutfitWardrobeItems(items),
+  };
 }
 
 /** Backend terminal states exposed by the low-sensitivity visual trigger route. */

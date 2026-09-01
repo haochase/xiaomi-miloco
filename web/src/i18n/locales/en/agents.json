@@ -45,7 +45,20 @@
       "wardrobe": {
         "title": "My wardrobe",
         "storage": "Storage ready: {{status}}",
-        "empty": "No wardrobe items are available"
+        "empty": "No wardrobe items are available",
+        "loading": "Loading wardrobe items",
+        "loadFailed": "Wardrobe information is unavailable",
+        "pendingTitle": "Pending confirmation",
+        "availableTitle": "Available items",
+        "categories": {
+          "top": "Top",
+          "bottom": "Bottom",
+          "dress": "Dress",
+          "outerwear": "Outerwear",
+          "shoes": "Shoes",
+          "bag": "Bag",
+          "accessory": "Accessory"
+        }
       },
       "review": {
         "title": "Try-on review",

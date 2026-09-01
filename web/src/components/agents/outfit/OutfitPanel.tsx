@@ -1,7 +1,16 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { getOutfitCapability, getOutfitUsageToday } from "@/api";
-import type { OutfitCapability, OutfitUsageToday } from "@/api";
+import {
+  getOutfitCapability,
+  getOutfitUsageToday,
+  getOutfitWardrobe,
+} from "@/api/outfit";
+import type {
+  OutfitCapability,
+  OutfitUsageToday,
+  OutfitWardrobe,
+  OutfitWardrobeCategory,
+} from "@/api/outfit";
 import { Segmented } from "@/components/Segmented";
 import { useAsync } from "@/hooks/useAsync";
 import { OutfitTryOnReview } from "./OutfitTryOnReview";
@@ -44,8 +53,10 @@ export function resolveOutfitPanelPhase({
 interface ReadyContentProps {
   capability: OutfitCapability;
   usage: OutfitUsageToday;
+  wardrobe: OutfitPanelLoadState<OutfitWardrobe>;
   activeView: OutfitPanelView;
   onViewChange: (view: OutfitPanelView) => void;
+  onWardrobeRetry: () => void;
 }
 
 function CapabilityFact({ label, value }: { label: string; value: string }) {
@@ -103,11 +114,113 @@ function AdminUsageDiagnostics({ usage }: { usage: OutfitUsageToday }) {
   );
 }
 
+function WardrobeItemList({
+  items,
+  label,
+}: {
+  items: ReadonlyArray<{
+    id: string;
+    name: string;
+    category: OutfitWardrobeCategory;
+  }>;
+  label: string;
+}) {
+  const { t } = useTranslation();
+  return (
+    <ul className="mt-3 divide-y divide-border" aria-label={label}>
+      {items.map((item) => (
+        <li key={item.id} className="flex items-baseline justify-between gap-4 py-3">
+          <span className="text-body text-text-primary">{item.name}</span>
+          <span className="text-caption text-text-secondary">
+            {t(`agents.outfit.wardrobe.categories.${item.category}`)}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function WardrobeContent({
+  wardrobe,
+  onRetry,
+}: Pick<ReadyContentProps, "wardrobe"> & {
+  onRetry: () => void;
+}) {
+  const { t } = useTranslation();
+  if (wardrobe.error) {
+    return (
+      <div className="mt-4" role="alert">
+        <p className="text-body text-text-secondary">
+          {t("agents.outfit.wardrobe.loadFailed")}
+        </p>
+        <button
+          type="button"
+          onClick={onRetry}
+          className="mt-4 min-h-9 rounded-md border border-border px-3 py-2 text-body text-text-primary transition-colors hover:border-border-strong"
+        >
+          {t("agents.outfit.retry")}
+        </button>
+      </div>
+    );
+  }
+  if (wardrobe.loading || !wardrobe.data) {
+    return (
+      <p className="mt-4 text-body text-text-secondary">
+        {t("agents.outfit.wardrobe.loading")}
+      </p>
+    );
+  }
+
+  const { pendingDrafts, availableItems } = wardrobe.data;
+  if (pendingDrafts.length === 0 && availableItems.length === 0) {
+    return (
+      <p className="mt-4 text-body text-text-secondary">
+        {t("agents.outfit.wardrobe.empty")}
+      </p>
+    );
+  }
+
+  const pendingTitle = t("agents.outfit.wardrobe.pendingTitle");
+  const availableTitle = t("agents.outfit.wardrobe.availableTitle");
+  return (
+    <div className="mt-5 space-y-6">
+      {pendingDrafts.length > 0 && (
+        <section aria-label={pendingTitle}>
+          <h2 className="text-body text-text-primary">{pendingTitle}</h2>
+          <WardrobeItemList
+            label={pendingTitle}
+            items={pendingDrafts.map((draft) => ({
+              id: draft.draftId,
+              name: draft.name,
+              category: draft.category,
+            }))}
+          />
+        </section>
+      )}
+      {availableItems.length > 0 && (
+        <section aria-label={availableTitle}>
+          <h2 className="text-body text-text-primary">{availableTitle}</h2>
+          <WardrobeItemList
+            label={availableTitle}
+            items={availableItems.map((item) => ({
+              id: item.itemId,
+              name: item.name,
+              category: item.category,
+            }))}
+          />
+        </section>
+      )}
+    </div>
+  );
+}
+
 export function OutfitPanelReadyContent({
   capability,
   usage,
+  wardrobe,
   activeView,
   onViewChange,
+  onWardrobeRetry,
 }: ReadyContentProps) {
   const { t } = useTranslation();
   const facts = [
@@ -161,7 +274,10 @@ export function OutfitPanelReadyContent({
               ),
             })}
           </p>
-          <p className="mt-4 text-body text-text-secondary">{t("agents.outfit.wardrobe.empty")}</p>
+          <WardrobeContent
+            wardrobe={wardrobe}
+            onRetry={onWardrobeRetry}
+          />
         </section>
       )}
       {activeView === "tryOn" && (
@@ -179,12 +295,17 @@ export function OutfitPanelReadyContent({
 
 function OutfitPanelReady({ capability, usage }: Pick<ReadyContentProps, "capability" | "usage">) {
   const [activeView, setActiveView] = useState<OutfitPanelView>("today");
+  const wardrobe = useAsync(() => getOutfitWardrobe(), [], {
+    errorLabel: "wardrobe",
+  });
   return (
     <OutfitPanelReadyContent
       capability={capability}
       usage={usage}
+      wardrobe={wardrobe}
       activeView={activeView}
       onViewChange={setActiveView}
+      onWardrobeRetry={() => void wardrobe.reload()}
     />
   );
 }

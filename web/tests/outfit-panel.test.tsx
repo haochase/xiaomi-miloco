@@ -6,6 +6,7 @@ import i18n from "@/i18n";
 import {
   OutfitPanelReadyContent,
   resolveOutfitPanelPhase,
+  type OutfitPanelLoadState,
   type OutfitPanelView,
 } from "@/components/agents/outfit/OutfitPanel";
 import {
@@ -21,6 +22,7 @@ import type {
   VisualReviewResult,
   VisualReviewTrigger,
 } from "@/api";
+import type { OutfitWardrobe } from "@/api/outfit";
 
 const READY_CAPABILITY: OutfitCapability = {
   enabled: true,
@@ -39,6 +41,28 @@ const COMPLETE_USAGE: OutfitUsageToday = {
   outputTokens: 5,
   estimatedTotalTokens: 21,
   complete: true,
+};
+
+const WARDROBE: OutfitWardrobe = {
+  pendingDrafts: [
+    {
+      draftId: "draft-private",
+      name: "Navy shirt",
+      category: "top",
+      sourceTypes: ["photo"],
+      status: "pending",
+    },
+  ],
+  availableItems: [
+    {
+      itemId: "item-private",
+      name: "Black trousers",
+      category: "bottom",
+      sourceTypes: ["manual"],
+      status: "confirmed",
+      availability: "available",
+    },
+  ],
 };
 
 const REVIEW_TRIGGER: VisualReviewTrigger = {
@@ -72,13 +96,23 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-function renderReady(view: OutfitPanelView, usage = COMPLETE_USAGE): string {
+function renderReady(
+  view: OutfitPanelView,
+  usage = COMPLETE_USAGE,
+  wardrobe: OutfitPanelLoadState<OutfitWardrobe> = {
+    data: WARDROBE,
+    loading: false,
+    error: undefined,
+  },
+): string {
   return renderToStaticMarkup(
     <OutfitPanelReadyContent
       capability={READY_CAPABILITY}
       usage={usage}
+      wardrobe={wardrobe}
       activeView={view}
       onViewChange={() => {}}
+      onWardrobeRetry={() => {}}
     />,
   ).replaceAll("&#x27;", "'");
 }
@@ -141,11 +175,39 @@ describe("OutfitPanel ready views", () => {
     expect(markup).not.toContain("recommendation-private");
   });
 
-  it("renders storage status and an empty wardrobe without inventing inventory", () => {
+  it("renders pending and available wardrobe facts without source references", () => {
     const markup = renderReady("wardrobe");
 
     expect(markup).toContain("My wardrobe");
     expect(markup).toContain("Storage ready");
+    expect(markup).toContain("Pending confirmation");
+    expect(markup).toContain("Available items");
+    expect(markup).toContain("Navy shirt");
+    expect(markup).toContain("Black trousers");
+    expect(markup).not.toContain("draft-private");
+    expect(markup).not.toContain("item-private");
+    expect(markup).not.toContain("private-source");
+  });
+
+  it("keeps wardrobe errors local to the wardrobe view and exposes retry", () => {
+    const markup = renderReady("wardrobe", COMPLETE_USAGE, {
+      data: undefined,
+      loading: false,
+      error: new Error("private wardrobe failure"),
+    });
+
+    expect(markup).toContain("Wardrobe information is unavailable");
+    expect(markup).toContain("Retry");
+    expect(markup).not.toContain("private wardrobe failure");
+  });
+
+  it("keeps the empty wardrobe state honest when both lists are empty", () => {
+    const markup = renderReady("wardrobe", COMPLETE_USAGE, {
+      data: { pendingDrafts: [], availableItems: [] },
+      loading: false,
+      error: undefined,
+    });
+
     expect(markup).toContain("No wardrobe items are available");
   });
 

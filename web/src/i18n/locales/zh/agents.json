@@ -45,7 +45,20 @@
       "wardrobe": {
         "title": "我的衣橱",
         "storage": "存储已就绪：{{status}}",
-        "empty": "当前没有可展示的衣橱内容"
+        "empty": "当前没有可展示的衣橱内容",
+        "loading": "正在读取衣橱内容",
+        "loadFailed": "衣橱内容暂不可用",
+        "pendingTitle": "待确认",
+        "availableTitle": "可用衣物",
+        "categories": {
+          "top": "上装",
+          "bottom": "下装",
+          "dress": "连衣裙",
+          "outerwear": "外套",
+          "shoes": "鞋履",
+          "bag": "包袋",
+          "accessory": "配饰"
+        }
       },
       "review": {
         "title": "试穿复核",
