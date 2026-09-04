@@ -40,7 +40,22 @@
       },
       "today": {
         "title": "Today's recommendation",
-        "empty": "No recommendation is available"
+        "empty": "No recommendation is available",
+        "idle": "No recommendation has been generated",
+        "scenarioLabel": "Scenario",
+        "scenarios": {
+          "commute": "Commute",
+          "work": "Work",
+          "social": "Social",
+          "errands": "Errands"
+        },
+        "request": "Generate recommendation",
+        "loading": "Generating recommendation",
+        "loadingWardrobe": "Matching wardrobe items",
+        "unavailable": "Recommendation is unavailable",
+        "insufficient": "Not enough confirmed items match this scenario",
+        "options": "Outfit options",
+        "option": "Option {{index}}"
       },
       "wardrobe": {
         "title": "My wardrobe",

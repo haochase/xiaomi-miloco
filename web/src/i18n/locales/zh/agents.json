@@ -40,7 +40,22 @@
       },
       "today": {
         "title": "今日建议",
-        "empty": "当前没有可展示的建议"
+        "empty": "当前没有可展示的建议",
+        "idle": "尚未生成今日建议",
+        "scenarioLabel": "场景",
+        "scenarios": {
+          "commute": "通勤",
+          "work": "工作",
+          "social": "社交",
+          "errands": "办事"
+        },
+        "request": "生成建议",
+        "loading": "正在生成建议",
+        "loadingWardrobe": "正在匹配衣橱",
+        "unavailable": "建议暂不可用",
+        "insufficient": "没有足够的已确认衣物适合当前场景",
+        "options": "穿搭方案",
+        "option": "方案 {{index}}"
       },
       "wardrobe": {
         "title": "我的衣橱",

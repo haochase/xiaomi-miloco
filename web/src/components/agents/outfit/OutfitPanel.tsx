@@ -1,12 +1,15 @@
 import { useState } from "react";
+import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
   getOutfitCapability,
   getOutfitUsageToday,
   getOutfitWardrobe,
+  requestOutfitRecommendation,
 } from "@/api/outfit";
 import type {
   OutfitCapability,
+  OutfitRecommendationSnapshot,
   OutfitUsageToday,
   OutfitWardrobe,
   OutfitWardrobeCategory,
@@ -54,10 +57,20 @@ interface ReadyContentProps {
   capability: OutfitCapability;
   usage: OutfitUsageToday;
   wardrobe: OutfitPanelLoadState<OutfitWardrobe>;
+  recommendation: OutfitPanelLoadState<OutfitRecommendationSnapshot>;
+  recommendationScenario: OutfitRecommendationScenario;
   activeView: OutfitPanelView;
   onViewChange: (view: OutfitPanelView) => void;
   onWardrobeRetry: () => void;
+  onRecommendationScenarioChange: (scenario: OutfitRecommendationScenario) => void;
+  onRecommendationRequest: () => void;
 }
+
+export type OutfitRecommendationScenario =
+  | "commute"
+  | "work"
+  | "social"
+  | "errands";
 
 function CapabilityFact({ label, value }: { label: string; value: string }) {
   return (
@@ -214,13 +227,144 @@ function WardrobeContent({
   );
 }
 
+function recommendationOptionNames(
+  recommendation: OutfitRecommendationSnapshot,
+  wardrobe: OutfitWardrobe,
+): string[][] | undefined {
+  const namesById = new Map(
+    wardrobe.availableItems.map((item) => [item.itemId, item.name]),
+  );
+  const options = recommendation.optionItemIds.map((itemIds) =>
+    itemIds.map((itemId) => namesById.get(itemId)),
+  );
+  if (options.some((option) => option.some((name) => !name))) {
+    return undefined;
+  }
+  return options as string[][];
+}
+
+function TodayRecommendation({
+  recommendation,
+  wardrobe,
+  scenario,
+  onScenarioChange,
+  onRequest,
+}: {
+  recommendation: OutfitPanelLoadState<OutfitRecommendationSnapshot>;
+  wardrobe: OutfitPanelLoadState<OutfitWardrobe>;
+  scenario: OutfitRecommendationScenario;
+  onScenarioChange: (scenario: OutfitRecommendationScenario) => void;
+  onRequest: () => void;
+}) {
+  const { t } = useTranslation();
+  const isRetry = Boolean(recommendation.error);
+  let result: ReactNode;
+
+  if (recommendation.loading) {
+    result = (
+      <p className="text-body text-text-secondary" role="status">
+        {t("agents.outfit.today.loading")}
+      </p>
+    );
+  } else if (recommendation.error) {
+    result = (
+      <p className="text-body text-text-secondary" role="alert">
+        {t("agents.outfit.today.unavailable")}
+      </p>
+    );
+  } else if (!recommendation.data) {
+    result = (
+      <p className="text-body text-text-secondary">
+        {t("agents.outfit.today.idle")}
+      </p>
+    );
+  } else if (recommendation.data.status === "insufficient_inventory") {
+    result = (
+      <p className="text-body text-text-secondary">
+        {t("agents.outfit.today.insufficient")}
+      </p>
+    );
+  } else if (wardrobe.error) {
+    result = (
+      <p className="text-body text-text-secondary" role="alert">
+        {t("agents.outfit.today.unavailable")}
+      </p>
+    );
+  } else if (wardrobe.loading || !wardrobe.data) {
+    result = (
+      <p className="text-body text-text-secondary" role="status">
+        {t("agents.outfit.today.loadingWardrobe")}
+      </p>
+    );
+  } else {
+    const optionNames = recommendationOptionNames(
+      recommendation.data,
+      wardrobe.data,
+    );
+    result = optionNames ? (
+      <ol className="divide-y divide-border" aria-label={t("agents.outfit.today.options")}>
+        {optionNames.map((names, index) => (
+          <li key={index} className="py-4">
+            <h2 className="text-body text-text-primary">
+              {t("agents.outfit.today.option", { index: index + 1 })}
+            </h2>
+            <p className="mt-1 text-caption text-text-secondary">
+              {names.join(" · ")}
+            </p>
+          </li>
+        ))}
+      </ol>
+    ) : (
+      <p className="text-body text-text-secondary" role="alert">
+        {t("agents.outfit.today.unavailable")}
+      </p>
+    );
+  }
+
+  return (
+    <div className="mt-4 space-y-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+        <label className="flex min-w-0 flex-1 flex-col gap-1 text-caption text-text-secondary">
+          {t("agents.outfit.today.scenarioLabel")}
+          <select
+            value={scenario}
+            onChange={(event) =>
+              onScenarioChange(event.target.value as OutfitRecommendationScenario)
+            }
+            className="min-h-10 w-full rounded-md border border-border bg-bg-primary px-3 text-body text-text-primary"
+          >
+            {(["commute", "work", "social", "errands"] as const).map((key) => (
+              <option key={key} value={key}>
+                {t(`agents.outfit.today.scenarios.${key}`)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          type="button"
+          onClick={onRequest}
+          disabled={recommendation.loading}
+          className="min-h-10 rounded-md border border-border px-4 py-2 text-body text-text-primary transition-colors hover:border-border-strong disabled:opacity-50"
+        >
+          {t(isRetry ? "agents.outfit.retry" : "agents.outfit.today.request")}
+        </button>
+      </div>
+      {result}
+    </div>
+  );
+}
+
 export function OutfitPanelReadyContent({
   capability,
   usage,
   wardrobe,
+  recommendation,
+  recommendationScenario,
   activeView,
   onViewChange,
   onWardrobeRetry,
+  onRecommendationScenarioChange,
+  onRecommendationRequest,
 }: ReadyContentProps) {
   const { t } = useTranslation();
   const facts = [
@@ -246,7 +390,13 @@ export function OutfitPanelReadyContent({
       {activeView === "today" && (
         <section aria-label={t("agents.outfit.today.title")}>
           <h1 className="text-title text-text-primary">{t("agents.outfit.today.title")}</h1>
-          <p className="mt-2 text-body text-text-secondary">{t("agents.outfit.today.empty")}</p>
+          <TodayRecommendation
+            recommendation={recommendation}
+            wardrobe={wardrobe}
+            scenario={recommendationScenario}
+            onScenarioChange={onRecommendationScenarioChange}
+            onRequest={onRecommendationRequest}
+          />
           <dl className="mt-4 divide-y divide-border">
             {facts.map(([key, value]) => (
               <CapabilityFact
@@ -255,10 +405,6 @@ export function OutfitPanelReadyContent({
                 value={t(value ? "agents.outfit.status.yes" : "agents.outfit.status.no")}
               />
             ))}
-            <CapabilityFact
-              label={t("agents.outfit.facts.providerStatus")}
-              value={t(`agents.outfit.provider.${capability.lastProviderStatus}`)}
-            />
           </dl>
         </section>
       )}
@@ -295,17 +441,48 @@ export function OutfitPanelReadyContent({
 
 function OutfitPanelReady({ capability, usage }: Pick<ReadyContentProps, "capability" | "usage">) {
   const [activeView, setActiveView] = useState<OutfitPanelView>("today");
+  const [recommendationScenario, setRecommendationScenario] =
+    useState<OutfitRecommendationScenario>("commute");
+  const [recommendation, setRecommendation] = useState<
+    OutfitPanelLoadState<OutfitRecommendationSnapshot>
+  >({ data: undefined, loading: false, error: undefined });
   const wardrobe = useAsync(() => getOutfitWardrobe(), [], {
     errorLabel: "wardrobe",
   });
+
+  const requestRecommendation = async () => {
+    setRecommendation({ data: undefined, loading: true, error: undefined });
+    try {
+      const data = await requestOutfitRecommendation({
+        activity: recommendationScenario,
+        dayKind: "unknown",
+      });
+      setRecommendation({ data, loading: false, error: undefined });
+    } catch (error) {
+      setRecommendation({
+        data: undefined,
+        loading: false,
+        error: error instanceof Error ? error : new Error("recommendation failed"),
+      });
+    }
+  };
+
+  const changeRecommendationScenario = (scenario: OutfitRecommendationScenario) => {
+    setRecommendationScenario(scenario);
+    setRecommendation({ data: undefined, loading: false, error: undefined });
+  };
   return (
     <OutfitPanelReadyContent
       capability={capability}
       usage={usage}
       wardrobe={wardrobe}
+      recommendation={recommendation}
+      recommendationScenario={recommendationScenario}
       activeView={activeView}
       onViewChange={setActiveView}
       onWardrobeRetry={() => void wardrobe.reload()}
+      onRecommendationScenarioChange={changeRecommendationScenario}
+      onRecommendationRequest={() => void requestRecommendation()}
     />
   );
 }

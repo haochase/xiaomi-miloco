@@ -22,7 +22,10 @@ import type {
   VisualReviewResult,
   VisualReviewTrigger,
 } from "@/api";
-import type { OutfitWardrobe } from "@/api/outfit";
+import type {
+  OutfitRecommendationSnapshot,
+  OutfitWardrobe,
+} from "@/api/outfit";
 
 const READY_CAPABILITY: OutfitCapability = {
   enabled: true,
@@ -65,6 +68,28 @@ const WARDROBE: OutfitWardrobe = {
   ],
 };
 
+const RECOMMENDATION_WARDROBE: OutfitWardrobe = {
+  pendingDrafts: [],
+  availableItems: [
+    { itemId: "item-top", name: "Navy shirt", category: "top", sourceTypes: ["manual"], status: "confirmed", availability: "available" },
+    { itemId: "item-bottom", name: "Gray trousers", category: "bottom", sourceTypes: ["manual"], status: "confirmed", availability: "available" },
+    { itemId: "item-shoes", name: "White shoes", category: "shoes", sourceTypes: ["manual"], status: "confirmed", availability: "available" },
+    { itemId: "item-dress", name: "Black dress", category: "dress", sourceTypes: ["manual"], status: "confirmed", availability: "available" },
+  ],
+};
+
+const READY_RECOMMENDATION: OutfitRecommendationSnapshot = {
+  snapshotId: "rec-private",
+  context: { occasion: null, activity: "commute", dayKind: "unknown" },
+  status: "ready",
+  optionItemIds: [
+    ["item-top", "item-bottom", "item-shoes"],
+    ["item-dress", "item-shoes"],
+  ],
+  rankingVersion: "private-ranking",
+  createdAtMs: 321,
+};
+
 const REVIEW_TRIGGER: VisualReviewTrigger = {
   triggerId: "trigger-private",
   recommendationId: "recommendation-private",
@@ -104,15 +129,24 @@ function renderReady(
     loading: false,
     error: undefined,
   },
+  recommendation: OutfitPanelLoadState<OutfitRecommendationSnapshot> = {
+    data: undefined,
+    loading: false,
+    error: undefined,
+  },
 ): string {
   return renderToStaticMarkup(
     <OutfitPanelReadyContent
       capability={READY_CAPABILITY}
       usage={usage}
       wardrobe={wardrobe}
+      recommendation={recommendation}
+      recommendationScenario="commute"
       activeView={view}
       onViewChange={() => {}}
       onWardrobeRetry={() => {}}
+      onRecommendationScenarioChange={() => {}}
+      onRecommendationRequest={() => {}}
     />,
   ).replaceAll("&#x27;", "'");
 }
@@ -166,13 +200,93 @@ describe("OutfitPanel load state controller", () => {
 });
 
 describe("OutfitPanel ready views", () => {
-  it("renders an honest recommendation-empty view from capability facts", () => {
+  it("renders an idle recommendation command without an automatic request", () => {
     const markup = renderReady("today");
 
     expect(markup).toContain("Today's recommendation");
-    expect(markup).toContain("No recommendation is available");
-    expect(markup).toContain("Provider status");
+    expect(markup).toContain("No recommendation has been generated");
+    expect(markup).toContain("Scenario");
+    expect(markup).toContain("Generate recommendation");
+    expect(markup).toContain("<select");
+    expect(markup).not.toContain("Provider status");
     expect(markup).not.toContain("recommendation-private");
+  });
+
+  it("renders recommendation loading and fixed error states", () => {
+    const loading = renderReady("today", COMPLETE_USAGE, undefined, {
+      data: undefined,
+      loading: true,
+      error: undefined,
+    });
+    const failed = renderReady("today", COMPLETE_USAGE, undefined, {
+      data: undefined,
+      loading: false,
+      error: new Error("private weather city provider path"),
+    });
+
+    expect(loading).toContain("Generating recommendation");
+    expect(failed).toContain("Recommendation is unavailable");
+    expect(failed).toContain("Retry");
+    expect(failed).not.toContain("private weather city provider path");
+    expect(failed).not.toContain("Beijing");
+  });
+
+  it("renders ready options using wardrobe names without opaque identifiers", () => {
+    const markup = renderReady(
+      "today",
+      COMPLETE_USAGE,
+      { data: RECOMMENDATION_WARDROBE, loading: false, error: undefined },
+      { data: READY_RECOMMENDATION, loading: false, error: undefined },
+    );
+
+    expect(markup).toContain("Option 1");
+    expect(markup).toContain("Navy shirt");
+    expect(markup).toContain("Gray trousers");
+    expect(markup).toContain("White shoes");
+    expect(markup).toContain("Black dress");
+    expect(markup).not.toContain("rec-private");
+    expect(markup).not.toContain("item-top");
+    expect(markup).not.toContain("private-ranking");
+  });
+
+  it("renders insufficient inventory without inventing weather capabilities", () => {
+    const markup = renderReady("today", COMPLETE_USAGE, undefined, {
+      data: { ...READY_RECOMMENDATION, status: "insufficient_inventory", optionItemIds: [] },
+      loading: false,
+      error: undefined,
+    });
+
+    expect(markup).toContain("Not enough confirmed items match this scenario");
+    expect(markup).not.toContain("waterproof");
+  });
+
+  it("hides a recommendation whose item IDs cannot be mapped to wardrobe names", () => {
+    const markup = renderReady("today", COMPLETE_USAGE, {
+      data: WARDROBE,
+      loading: false,
+      error: undefined,
+    }, {
+      data: READY_RECOMMENDATION,
+      loading: false,
+      error: undefined,
+    });
+
+    expect(markup).toContain("Recommendation is unavailable");
+    expect(markup).not.toContain("item-top");
+    expect(markup).not.toContain("rec-private");
+  });
+
+  it("fails closed when wardrobe names cannot be loaded", () => {
+    const markup = renderReady(
+      "today",
+      COMPLETE_USAGE,
+      { data: undefined, loading: false, error: new Error("private storage path") },
+      { data: READY_RECOMMENDATION, loading: false, error: undefined },
+    );
+
+    expect(markup).toContain("Recommendation is unavailable");
+    expect(markup).not.toContain("Matching wardrobe items");
+    expect(markup).not.toContain("private storage path");
   });
 
   it("renders pending and available wardrobe facts without source references", () => {

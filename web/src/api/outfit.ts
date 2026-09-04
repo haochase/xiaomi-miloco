@@ -44,6 +44,28 @@ const WARDROBE_ITEM_FIELDS = [
   "availability",
 ] as const;
 
+const RECOMMENDATION_FIELDS = [
+  "snapshot_id",
+  "context",
+  "status",
+  "option_item_ids",
+  "ranking_version",
+  "created_at_ms",
+] as const;
+
+const RECOMMENDATION_CONTEXT_FIELDS = [
+  "occasion",
+  "activity",
+  "day_kind",
+] as const;
+
+const RECOMMENDATION_DAY_KINDS = new Set([
+  "workday",
+  "weekend",
+  "holiday",
+  "unknown",
+] as const);
+
 const WARDROBE_CATEGORIES = new Set([
   "top",
   "bottom",
@@ -119,6 +141,33 @@ export interface OutfitWardrobe {
   availableItems: OutfitWardrobeItem[];
 }
 
+export type OutfitRecommendationDayKind =
+  | "workday"
+  | "weekend"
+  | "holiday"
+  | "unknown";
+
+export type OutfitRecommendationStatus = "ready" | "insufficient_inventory";
+
+export interface OutfitRecommendationRequest {
+  occasion?: string | null;
+  activity?: string | null;
+  dayKind: OutfitRecommendationDayKind;
+}
+
+export interface OutfitRecommendationSnapshot {
+  snapshotId: string;
+  context: {
+    occasion: string | null;
+    activity: string | null;
+    dayKind: OutfitRecommendationDayKind;
+  };
+  status: OutfitRecommendationStatus;
+  optionItemIds: string[][];
+  rankingVersion: string;
+  createdAtMs: number;
+}
+
 type RecordPayload = Record<string, unknown>;
 
 function hasExactlyKeys(
@@ -146,6 +195,10 @@ function isNonNegativeSafeInteger(value: unknown): value is number {
 
 function isNonEmptyText(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
+}
+
+function isNullableNonEmptyText(value: unknown): value is string | null {
+  return value === null || isNonEmptyText(value);
 }
 
 function parseOutfitWardrobeSourceTypes(
@@ -214,6 +267,57 @@ function parseOutfitWardrobeItems(response: unknown): OutfitWardrobeItem[] {
       availability: "available",
     };
   });
+}
+
+function parseOutfitRecommendation(
+  response: unknown,
+): OutfitRecommendationSnapshot {
+  if (!hasExactlyKeys(response, RECOMMENDATION_FIELDS)) {
+    throw new Error("invalid outfit recommendation response");
+  }
+  const context = response.context;
+  const status = response.status;
+  const options = response.option_item_ids;
+  if (
+    !/^rec-[a-z0-9][a-z0-9-]{0,63}$/.test(String(response.snapshot_id)) ||
+    !hasExactlyKeys(context, RECOMMENDATION_CONTEXT_FIELDS) ||
+    !isNullableNonEmptyText(context.occasion) ||
+    !isNullableNonEmptyText(context.activity) ||
+    typeof context.day_kind !== "string" ||
+    !RECOMMENDATION_DAY_KINDS.has(
+      context.day_kind as OutfitRecommendationDayKind,
+    ) ||
+    (status !== "ready" && status !== "insufficient_inventory") ||
+    !Array.isArray(options) ||
+    !isNonEmptyText(response.ranking_version) ||
+    !isNonNegativeSafeInteger(response.created_at_ms)
+  ) {
+    throw new Error("invalid outfit recommendation response");
+  }
+  if (
+    !options.every(
+      (option) =>
+        Array.isArray(option) &&
+        option.length >= 2 &&
+        option.every((itemId) => isNonEmptyText(itemId)),
+    ) ||
+    (status === "ready" && (options.length < 2 || options.length > 3)) ||
+    (status === "insufficient_inventory" && options.length > 1)
+  ) {
+    throw new Error("invalid outfit recommendation response");
+  }
+  return {
+    snapshotId: response.snapshot_id as string,
+    context: {
+      occasion: context.occasion,
+      activity: context.activity,
+      dayKind: context.day_kind as OutfitRecommendationDayKind,
+    },
+    status,
+    optionItemIds: options as string[][],
+    rankingVersion: response.ranking_version,
+    createdAtMs: response.created_at_ms,
+  };
 }
 
 function parseOutfitCapability(response: unknown): OutfitCapability {
@@ -321,6 +425,26 @@ export async function getOutfitWardrobe(): Promise<OutfitWardrobe> {
     pendingDrafts: parseOutfitWardrobeDrafts(drafts),
     availableItems: parseOutfitWardrobeItems(items),
   };
+}
+
+/** Create one bounded recommendation from scenario facts only. */
+export async function requestOutfitRecommendation(
+  request: OutfitRecommendationRequest,
+): Promise<OutfitRecommendationSnapshot> {
+  const occasion = request.occasion?.trim() || null;
+  const activity = request.activity?.trim() || null;
+  if (!occasion && !activity) {
+    throw new Error("outfit recommendation requires scenario context");
+  }
+  const response = await apiFetch<unknown>("/api/outfit/recommendations", {
+    method: "POST",
+    body: JSON.stringify({
+      occasion,
+      activity,
+      day_kind: request.dayKind,
+    }),
+  });
+  return parseOutfitRecommendation(response);
 }
 
 /** Backend terminal states exposed by the low-sensitivity visual trigger route. */

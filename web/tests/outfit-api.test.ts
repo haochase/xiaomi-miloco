@@ -3,7 +3,9 @@ import {
   getOutfitCapability,
   getOutfitUsageToday,
   getOutfitWardrobe,
+  requestOutfitRecommendation,
   requestVisualReview,
+  type OutfitRecommendationRequest,
   type VisualReviewErrorCode,
   type VisualReviewStatus,
   type VisualReviewTrigger,
@@ -51,6 +53,22 @@ const VALID_AVAILABLE_ITEMS = [
     availability: "available",
   },
 ];
+
+const VALID_RECOMMENDATION = {
+  snapshot_id: "rec-front-1",
+  context: {
+    occasion: null,
+    activity: "commute",
+    day_kind: "workday",
+  },
+  status: "ready",
+  option_item_ids: [
+    ["item-top", "item-bottom", "item-shoes"],
+    ["item-dress", "item-shoes"],
+  ],
+  ranking_version: "deterministic-v1",
+  created_at_ms: 321,
+};
 
 function jsonResponse(payload: unknown, status = 200): Response {
   return new Response(JSON.stringify(payload), {
@@ -254,6 +272,104 @@ describe("Outfit wardrobe read contracts", () => {
     ) as unknown as typeof fetch;
 
     await expect(getOutfitWardrobe()).rejects.toThrow("invalid outfit wardrobe response");
+  });
+});
+
+describe("Outfit recommendation request contract", () => {
+  it("posts only scenario facts and strictly maps a ready snapshot", async () => {
+    let requestUrl: RequestInfo | URL | undefined;
+    let requestInit: RequestInit | undefined;
+    window.__MILOCO_TOKEN__ = "recommendation-token";
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      requestUrl = input;
+      requestInit = init;
+      return jsonResponse(VALID_RECOMMENDATION);
+    }) as unknown as typeof fetch;
+    const request = {
+      occasion: null,
+      activity: "commute",
+      dayKind: "workday",
+      ownerPersonId: "private-owner",
+      weather: "private-weather",
+    } as OutfitRecommendationRequest & Record<string, unknown>;
+
+    await expect(requestOutfitRecommendation(request)).resolves.toEqual({
+      snapshotId: "rec-front-1",
+      context: {
+        occasion: null,
+        activity: "commute",
+        dayKind: "workday",
+      },
+      status: "ready",
+      optionItemIds: [
+        ["item-top", "item-bottom", "item-shoes"],
+        ["item-dress", "item-shoes"],
+      ],
+      rankingVersion: "deterministic-v1",
+      createdAtMs: 321,
+    });
+    expect(requestUrl).toBe("/api/outfit/recommendations");
+    expect(requestInit?.method).toBe("POST");
+    expect(JSON.parse(String(requestInit?.body))).toEqual({
+      occasion: null,
+      activity: "commute",
+      day_kind: "workday",
+    });
+    expect(new Headers(requestInit?.headers).get("Authorization")).toBe(
+      "Bearer recommendation-token",
+    );
+  });
+
+  it("accepts a bounded insufficient-inventory snapshot", async () => {
+    globalThis.fetch = vi.fn(async () =>
+      jsonResponse({
+        ...VALID_RECOMMENDATION,
+        status: "insufficient_inventory",
+        option_item_ids: [],
+      }),
+    ) as unknown as typeof fetch;
+
+    await expect(
+      requestOutfitRecommendation({ activity: "errands", dayKind: "unknown" }),
+    ).resolves.toMatchObject({
+      status: "insufficient_inventory",
+      optionItemIds: [],
+    });
+  });
+
+  it.each([
+    ["an extra owner field", { ...VALID_RECOMMENDATION, owner_person_id: "private" }],
+    ["an invalid snapshot ID", { ...VALID_RECOMMENDATION, snapshot_id: "E:/private" }],
+    ["an extra context field", { ...VALID_RECOMMENDATION, context: { ...VALID_RECOMMENDATION.context, city: "private" } }],
+    ["an invalid day kind", { ...VALID_RECOMMENDATION, context: { ...VALID_RECOMMENDATION.context, day_kind: "weekday" } }],
+    ["one ready option", { ...VALID_RECOMMENDATION, option_item_ids: [["a", "b"]] }],
+    ["four ready options", { ...VALID_RECOMMENDATION, option_item_ids: [["a", "b"], ["c", "d"], ["e", "f"], ["g", "h"]] }],
+    ["a one-item option", { ...VALID_RECOMMENDATION, option_item_ids: [["only-one"], ["c", "d"]] }],
+    ["a blank item ID", { ...VALID_RECOMMENDATION, option_item_ids: [["a", ""], ["c", "d"]] }],
+    ["two insufficient options", { ...VALID_RECOMMENDATION, status: "insufficient_inventory", option_item_ids: [["a", "b"], ["c", "d"]] }],
+    ["a blank ranking version", { ...VALID_RECOMMENDATION, ranking_version: " " }],
+    ["a negative timestamp", { ...VALID_RECOMMENDATION, created_at_ms: -1 }],
+    ["a non-object payload", []],
+  ] as const)("rejects recommendation payloads with %s", async (_label, payload) => {
+    globalThis.fetch = vi.fn(async () => jsonResponse(payload)) as unknown as typeof fetch;
+
+    await expect(
+      requestOutfitRecommendation({ activity: "commute", dayKind: "unknown" }),
+    ).rejects.toThrow("invalid outfit recommendation response");
+  });
+
+  it("rejects an empty scenario before fetch", async () => {
+    const fetchSpy = vi.fn();
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+
+    await expect(
+      requestOutfitRecommendation({
+        occasion: " ",
+        activity: null,
+        dayKind: "unknown",
+      }),
+    ).rejects.toThrow("outfit recommendation requires scenario context");
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });
 
