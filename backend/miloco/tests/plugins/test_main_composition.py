@@ -70,6 +70,7 @@ def test_main_static_imports_are_generic_and_policy_neutral() -> None:
 
     assert "miloco.plugins.builtin" in imports
     assert "miloco.plugins.host_composition" in imports
+    assert "miloco.weather.composition" in imports
     assert not any(
         imported == "miloco.outfit" or imported.startswith("miloco.outfit.")
         for imported in imports
@@ -82,6 +83,8 @@ def test_main_static_imports_are_generic_and_policy_neutral() -> None:
 def test_main_wires_runtime_after_manager_and_stops_it_before_core_teardown() -> None:
     source, tree = _main_tree()
     initialize_line = _call_lines(tree, "initialize")[0]
+    weather_build_line = _call_lines(tree, "build_host_weather_runtime")[0]
+    weather_start_line = _attribute_call_line(tree, "weather_runtime", "start")
     build_line = _call_lines(tree, "build_builtin_plugin_factories")[0]
     runtime_line = _call_lines(tree, "HostPluginRuntime")[0]
     start_line = _attribute_call_line(tree, "plugin_runtime", "start")
@@ -91,10 +94,25 @@ def test_main_wires_runtime_after_manager_and_stops_it_before_core_teardown() ->
     runtime_stop_line = (
         source[: source.index("await _app.state.plugin_runtime.stop")].count("\n") + 1
     )
+    weather_stop_line = (
+        source[: source.index("await _app.state.weather_runtime.stop")].count("\n")
+        + 1
+    )
     core_stop_line = _call_lines(tree, "stop_engine")[0]
 
-    assert initialize_line < build_line < runtime_line < start_line < yield_line
-    assert yield_line < runtime_stop_line < core_stop_line
+    assert (
+        initialize_line
+        < weather_build_line
+        < weather_start_line
+        < build_line
+        < runtime_line
+        < start_line
+        < yield_line
+    )
+    assert yield_line < runtime_stop_line < weather_stop_line < core_stop_line
+    assert "_app.state.weather_runtime = weather_runtime" in source
+    assert "weather_runtime_start_failed" in source
+    assert "weather_runtime_stop_failed" in source
     assert "_app.state.plugin_runtime = plugin_runtime" in source
     assert "plugin_runtime_start_failed" in source
     assert "plugin_runtime_stop_failed" in source
@@ -128,12 +146,24 @@ print(json.dumps({
         for name in sys.modules
     ),
     "outfit_dir_exists": (root / "outfit").exists(),
+    "weather_runtime_imported": any(
+        name in {
+            "miloco.weather.http_transport",
+            "miloco.weather.open_meteo",
+            "miloco.weather.repository",
+            "miloco.weather.runtime",
+            "miloco.weather.service",
+        }
+        for name in sys.modules
+    ),
+    "weather_dir_exists": (root / "weather").exists(),
 }))
 """
     env = os.environ.copy()
     env["MILOCO_HOME"] = str(root)
     env["MILOCO_DIRECTORIES__STORAGE"] = str(root)
     env["MILOCO_FEATURES__OUTFIT__ENABLED"] = "false"
+    env["MILOCO_WEATHER__ENABLED"] = "false"
     completed = subprocess.run(
         [sys.executable, "-c", code, str(root)],
         cwd=Path(__file__).parents[2],
@@ -146,6 +176,8 @@ print(json.dumps({
     assert json.loads(completed.stdout) == {
         "outfit_imported": False,
         "outfit_dir_exists": False,
+        "weather_runtime_imported": False,
+        "weather_dir_exists": False,
     }
 
 

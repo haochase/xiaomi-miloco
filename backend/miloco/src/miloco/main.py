@@ -70,6 +70,7 @@ from miloco.task.router import router as task_router
 from miloco.task_record.router import router as task_record_router
 from miloco.utils.common import escape_for_js_string
 from miloco.utils.paths import miloco_home
+from miloco.weather.composition import build_host_weather_runtime
 
 load_dotenv()
 
@@ -379,6 +380,23 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         logger.error("Manager initialization failed: %s", e)
         raise
 
+    weather_runtime = None
+    try:
+        weather_runtime = build_host_weather_runtime(
+            settings.weather,
+            settings.directories.workspace_dir,
+        )
+        if weather_runtime is not None:
+            await weather_runtime.start()
+            _app.state.weather_runtime = weather_runtime
+    except Exception:
+        logger.warning("weather_runtime_start_failed")
+        if weather_runtime is not None:
+            try:
+                await weather_runtime.stop()
+            except Exception:
+                logger.warning("weather_runtime_stop_failed")
+
     try:
         plugin_factories = build_builtin_plugin_factories(
             settings,
@@ -449,6 +467,12 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
             await _app.state.plugin_runtime.stop(_app)
         except Exception:
             logger.warning("plugin_runtime_stop_failed")
+
+    if hasattr(_app.state, "weather_runtime"):
+        try:
+            await _app.state.weather_runtime.stop()
+        except Exception:
+            logger.warning("weather_runtime_stop_failed")
 
     watchdog.enter_shutdown()
 
