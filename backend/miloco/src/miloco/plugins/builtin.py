@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from miloco.config.settings import MilocoSettings
     from miloco.plugins.audit import HostAuditEvent
     from miloco.plugins.primary_person import PersonLookup
+    from miloco.weather.contracts import WeatherCachePort
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -43,6 +44,8 @@ class _AuditUsageFanoutWriter:
 def build_builtin_plugin_factories(
     settings: MilocoSettings,
     person_service: PersonLookup,
+    *,
+    weather_cache: WeatherCachePort | None = None,
 ) -> tuple[PluginFactory, ...]:
     """Return explicit built-ins while keeping disabled Outfit entirely lazy."""
 
@@ -50,11 +53,21 @@ def build_builtin_plugin_factories(
         return ()
 
     def build():
+        import uuid
+
         from miloco.outfit.admin_router import create_outfit_admin_usage_router
         from miloco.outfit.capability import OutfitProviderStatus
+        from miloco.outfit.filtering import WeatherCapability
+        from miloco.outfit.host_weather_adapter import OutfitHostWeatherCacheAdapter
         from miloco.outfit.plugin import (
             OutfitRuntimeExtension,
             create_outfit_plugin_factory,
+        )
+        from miloco.outfit.recommendation_api import RecommendationSnapshot
+        from miloco.outfit.recommendation_router import create_recommendation_router
+        from miloco.outfit.recommendation_service import OutfitRecommendationService
+        from miloco.outfit.recommendation_snapshot_repo import (
+            RecommendationSnapshotRepository,
         )
         from miloco.outfit.storage import OutfitStorage
         from miloco.outfit.visual_observability import VisualHostAuditAdapter
@@ -62,11 +75,13 @@ def build_builtin_plugin_factories(
         from miloco.outfit.wardrobe_repo import WardrobeRepository
         from miloco.outfit.wardrobe_router import create_wardrobe_router
         from miloco.outfit.wardrobe_service import WardrobeService
+        from miloco.outfit.weather_adapter import CachedWeatherRequirementAdapter
         from miloco.plugins.audit import BestEffortAuditWriter, VersionedHmacDigestor
         from miloco.plugins.audit_repo import AuditRepository
         from miloco.plugins.primary_person import PrimaryPersonResolver
         from miloco.plugins.usage import UsageAggregationService
         from miloco.plugins.usage_repo import UsageRepository
+        from miloco.weather.contracts import WeatherLocationQuery
 
         outfit_settings = settings.features.outfit
         workspace_dir = settings.directories.workspace_dir
@@ -83,7 +98,7 @@ def build_builtin_plugin_factories(
 
         def build_runtime_extension(
             primary_person,
-            _storage,
+            storage,
             wardrobe_repository,
         ) -> OutfitRuntimeExtension:
             configured_key = outfit_settings.audit_hmac_key
@@ -115,26 +130,90 @@ def build_builtin_plugin_factories(
                 digestor=digestor,
                 writer=fanout_writer,
             )
+
+            def clock_ms() -> int:
+                return time.time_ns() // 1_000_000
+
             wardrobe_service = WardrobeService(
                 wardrobe_repository,
                 primary_person_id=primary_person.person_id,
-                clock_ms=lambda: time.time_ns() // 1_000_000,
+                clock_ms=clock_ms,
             )
             admin_router = create_outfit_admin_usage_router(usage_service=usage_service)
             wardrobe_router = create_wardrobe_router(wardrobe_service=wardrobe_service)
+            extension_routers = [admin_router, wardrobe_router]
+            extension_resources: list[object] = [
+                audit_repository,
+                audit_writer,
+                usage_repository,
+                usage_service,
+                fanout_writer,
+                digestor,
+                voice_audit,
+                visual_audit,
+                wardrobe_service,
+            ]
+
+            if (
+                weather_cache is not None
+                and settings.weather.enabled
+                and settings.weather.city_name is not None
+            ):
+                query = WeatherLocationQuery(
+                    city_name=settings.weather.city_name,
+                    country_code=settings.weather.country_code,
+                )
+                host_weather = OutfitHostWeatherCacheAdapter(
+                    cache=weather_cache,
+                    query=query,
+                )
+                weather_requirement = CachedWeatherRequirementAdapter(
+                    host_weather,
+                    now_ms=clock_ms,
+                )
+                if weather_requirement.current_resolution().status == "available":
+                    snapshot_repository = RecommendationSnapshotRepository(storage)
+
+                    class _NoInferredWeatherCapabilities:
+                        def weather_capabilities_for(
+                            self,
+                            item_id: str,
+                        ) -> tuple[WeatherCapability, ...]:
+                            del item_id
+                            return ()
+
+                    class _OwnerScopedSnapshotWriter:
+                        def save(self, snapshot: RecommendationSnapshot) -> None:
+                            snapshot_repository.save(
+                                owner_person_id=primary_person.person_id,
+                                snapshot=snapshot,
+                                expires_at_ms=(snapshot.created_at_ms + 86_400_000),
+                            )
+
+                    recommendation_service = OutfitRecommendationService(
+                        wardrobe_service,
+                        weather_port=weather_requirement,
+                        capability_port=_NoInferredWeatherCapabilities(),
+                    )
+                    recommendation_router = create_recommendation_router(
+                        recommendation_service=recommendation_service,
+                        snapshot_writer=_OwnerScopedSnapshotWriter(),
+                        snapshot_id_factory=lambda: f"rec-{uuid.uuid4()}",
+                        clock_ms=clock_ms,
+                        ranking_version="deterministic-v1",
+                    )
+                    extension_routers.append(recommendation_router)
+                    extension_resources.extend(
+                        (
+                            host_weather,
+                            weather_requirement,
+                            snapshot_repository,
+                            recommendation_service,
+                        )
+                    )
             return OutfitRuntimeExtension(
-                routers=(admin_router, wardrobe_router),
-                resources=(
-                    audit_repository,
-                    audit_writer,
-                    usage_repository,
-                    usage_service,
-                    fanout_writer,
-                    digestor,
-                    voice_audit,
-                    visual_audit,
-                    wardrobe_service,
-                ),
+                routers=tuple(extension_routers),
+                resources=tuple(extension_resources),
             )
 
         delegated_factory = create_outfit_plugin_factory(

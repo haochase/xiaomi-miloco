@@ -10,11 +10,12 @@ import json
 import os
 import subprocess
 import sys
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import pytest
 from fastapi import Response
-from miloco.config.settings import MilocoSettings
+from miloco.config.settings import MilocoSettings, WeatherSettings
 from miloco.plugins import builtin as builtin_module
 from miloco.plugins.audit import HostAuditEvent, VersionedHmacDigest
 from miloco.plugins.builtin import (
@@ -26,6 +27,12 @@ from miloco.plugins.registry import (
     PluginFailureCode,
     PluginLifecycleStage,
 )
+from miloco.weather.contracts import (
+    HostWeatherObservation,
+    ResolvedWeatherLocation,
+    WeatherCondition,
+    WeatherLocationQuery,
+)
 
 
 class _PersonService:
@@ -33,10 +40,63 @@ class _PersonService:
         self._exists = exists
         self._fails = fails
 
-    def exists(self, _person_id: str) -> bool:
+    def exists(self, person_id: str) -> bool:
+        del person_id
         if self._fails:
             raise RuntimeError("private-person-detail")
         return self._exists
+
+
+@dataclass
+class _WeatherCache:
+    location: ResolvedWeatherLocation | None
+    observation: HostWeatherObservation | None
+    location_reads: list[WeatherLocationQuery] = field(default_factory=list)
+    observation_reads: int = 0
+
+    def read_location(
+        self,
+        query: WeatherLocationQuery,
+    ) -> ResolvedWeatherLocation | None:
+        self.location_reads.append(query)
+        return self.location
+
+    def write_location(
+        self,
+        query: WeatherLocationQuery,
+        location: ResolvedWeatherLocation,
+    ) -> None:
+        del query, location
+
+    def read_observation(self) -> HostWeatherObservation | None:
+        self.observation_reads += 1
+        return self.observation
+
+    def write_observation(self, observation: HostWeatherObservation) -> None:
+        del observation
+
+
+def _weather_cache(
+    *,
+    condition: WeatherCondition = "clear",
+    valid_until_ms: int = 4_000_000_000_000,
+) -> _WeatherCache:
+    return _WeatherCache(
+        location=ResolvedWeatherLocation(
+            city_name="北京市",
+            country_code="CN",
+            latitude=39.9042,
+            longitude=116.4074,
+            timezone="Asia/Shanghai",
+        ),
+        observation=HostWeatherObservation.model_validate(
+            {
+                "condition": condition,
+                "observed_at_ms": 1,
+                "valid_until_ms": valid_until_ms,
+            }
+        ),
+    )
 
 
 def _settings(
@@ -44,9 +104,15 @@ def _settings(
     *,
     key: str | None = "k" * 32,
     primary_person_id: str | None = "chase",
+    weather_enabled: bool = False,
 ) -> MilocoSettings:
     return MilocoSettings(
         directories={"storage": str(root)},
+        weather=WeatherSettings(
+            enabled=weather_enabled,
+            city_name="北京市" if weather_enabled else None,
+            country_code="CN",
+        ),
         features={
             "outfit": {
                 "enabled": True,
@@ -137,6 +203,62 @@ async def test_enabled_factory_builds_wardrobe_router_without_recommendation_onc
         "usage.db",
     }
     assert all(path.is_absolute() for path in outfit_root.iterdir())
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("case", ["missing_port", "missing_location", "stale"])
+async def test_unavailable_weather_keeps_wardrobe_without_recommendation(
+    tmp_path: Path,
+    case: str,
+) -> None:
+    if case == "missing_port":
+        cache = None
+    elif case == "missing_location":
+        cache = _WeatherCache(location=None, observation=None)
+    else:
+        cache = _weather_cache(valid_until_ms=2)
+    registry = HostPluginRegistry(
+        build_builtin_plugin_factories(
+            _settings(tmp_path / case, weather_enabled=True),
+            _PersonService(),
+            weather_cache=cache,
+        )
+    )
+
+    await registry.activate()
+
+    paths = [
+        getattr(route, "path", "")
+        for router in registry.routers
+        for route in router.routes
+    ]
+    assert "/api/outfit/wardrobe/drafts" in paths
+    assert "/api/outfit/recommendations" not in paths
+
+
+@pytest.mark.asyncio
+async def test_available_weather_registers_recommendation_once(tmp_path: Path) -> None:
+    cache = _weather_cache()
+    registry = HostPluginRegistry(
+        build_builtin_plugin_factories(
+            _settings(tmp_path, weather_enabled=True),
+            _PersonService(),
+            weather_cache=cache,
+        )
+    )
+
+    await registry.activate()
+
+    paths = [
+        getattr(route, "path", "")
+        for router in registry.routers
+        for route in router.routes
+    ]
+    assert paths.count("/api/outfit/recommendations") == 1
+    assert cache.location_reads == [
+        WeatherLocationQuery(city_name="北京市", country_code="CN")
+    ]
+    assert cache.observation_reads == 1
 
 
 @pytest.mark.asyncio

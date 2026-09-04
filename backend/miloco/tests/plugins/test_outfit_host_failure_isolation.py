@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import asyncio
+import sqlite3
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import SimpleNamespace
@@ -13,7 +14,7 @@ from types import SimpleNamespace
 import httpx
 import pytest
 from fastapi import FastAPI
-from miloco.config.settings import MilocoSettings
+from miloco.config.settings import MilocoSettings, WeatherSettings
 from miloco.outfit.camera_adapter import CameraFrameCaptureAdapter
 from miloco.outfit.composition import OutfitCandidate
 from miloco.outfit.ranking import rank_outfit_candidates
@@ -31,6 +32,12 @@ from miloco.outfit.xiaomi_speaker_adapter import XiaomiSpeakerAdapter
 from miloco.plugins.builtin import build_builtin_plugin_factories
 from miloco.plugins.host_composition import HostPluginRuntime
 from miloco.plugins.registry import PluginFailureCode, PluginLifecycleStage
+from miloco.weather.contracts import (
+    HostWeatherObservation,
+    ResolvedWeatherLocation,
+    WeatherCondition,
+    WeatherLocationQuery,
+)
 
 
 class _PersonService:
@@ -48,6 +55,47 @@ class _SideEffectTripwire:
     capture: int = 0
     provider: int = 0
     play_text: int = 0
+
+
+@dataclass
+class _HostWeatherCache:
+    condition: WeatherCondition
+    location_reads: int = 0
+    observation_reads: int = 0
+
+    def read_location(
+        self,
+        query: WeatherLocationQuery,
+    ) -> ResolvedWeatherLocation | None:
+        self.location_reads += 1
+        assert query == WeatherLocationQuery(city_name="北京市", country_code="CN")
+        return ResolvedWeatherLocation(
+            city_name="北京市",
+            country_code="CN",
+            latitude=39.9042,
+            longitude=116.4074,
+            timezone="Asia/Shanghai",
+        )
+
+    def write_location(
+        self,
+        query: WeatherLocationQuery,
+        location: ResolvedWeatherLocation,
+    ) -> None:
+        del query, location
+
+    def read_observation(self) -> HostWeatherObservation | None:
+        self.observation_reads += 1
+        return HostWeatherObservation.model_validate(
+            {
+                "condition": self.condition,
+                "observed_at_ms": 1,
+                "valid_until_ms": 4_000_000_000_000,
+            }
+        )
+
+    def write_observation(self, observation: HostWeatherObservation) -> None:
+        del observation
 
 
 def _install_real_get_side_effect_tripwires(
@@ -148,9 +196,19 @@ class _FailingVisualAudit:
         raise RuntimeError("private audit sink failure")
 
 
-def _settings(root: Path, *, enabled: bool = True) -> MilocoSettings:
+def _settings(
+    root: Path,
+    *,
+    enabled: bool = True,
+    weather_enabled: bool = False,
+) -> MilocoSettings:
     return MilocoSettings(
         directories={"storage": str(root)},
+        weather=WeatherSettings(
+            enabled=weather_enabled,
+            city_name="北京市" if weather_enabled else None,
+            country_code="CN",
+        ),
         features={
             "outfit": {
                 "enabled": enabled,
@@ -238,6 +296,37 @@ async def _assert_core_routes_are_unchanged(app: FastAPI) -> None:
 
 def _route_paths(app: FastAPI) -> tuple[str, ...]:
     return tuple(getattr(route, "path", "") for route in app.router.routes)
+
+
+async def _seed_complete_inventory(
+    client: httpx.AsyncClient,
+    *,
+    headers: dict[str, str],
+) -> None:
+    for name, category in (
+        ("test top", "top"),
+        ("test bottom", "bottom"),
+        ("test shoes", "shoes"),
+        ("test dress", "dress"),
+    ):
+        created = await client.post(
+            "/api/outfit/wardrobe/drafts",
+            headers=headers,
+            json={
+                "name": name,
+                "category": category,
+                "source_evidence": [
+                    {"source_type": "manual", "reference": "synthetic closet"}
+                ],
+            },
+        )
+        assert created.status_code == 201
+        confirmed = await client.post(
+            f"/api/outfit/wardrobe/drafts/{created.json()['draft_id']}/confirm",
+            headers=headers,
+            json={"confirmed_by_user": True},
+        )
+        assert confirmed.status_code == 200
 
 
 def _outfit_file_tree(outfit_root: Path) -> tuple[str, ...]:
@@ -428,6 +517,81 @@ async def test_builtin_wardrobe_reads_are_authenticated_and_side_effect_free(
         assert _outfit_file_tree(outfit_root) == file_tree_before
         assert _route_paths(app) == route_paths_before
         assert _pending_tasks() - pending_tasks_before == frozenset()
+    finally:
+        await runtime.stop(app)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("condition", "expected_status", "expected_option_count"),
+    [
+        ("clear", "ready", 2),
+        ("rain", "insufficient_inventory", 0),
+    ],
+)
+async def test_cached_weather_recommendation_persists_owner_scoped_snapshot(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    condition: WeatherCondition,
+    expected_status: str,
+    expected_option_count: int,
+) -> None:
+    import miloco.middleware.auth_middleware as auth_middleware
+
+    root = tmp_path / condition
+    weather_cache = _HostWeatherCache(condition=condition)
+    app, _state = _synthetic_host()
+    runtime = HostPluginRuntime(
+        build_builtin_plugin_factories(
+            _settings(root, weather_enabled=True),
+            _PersonService(),
+            weather_cache=weather_cache,
+        )
+    )
+    monkeypatch.setattr(
+        auth_middleware,
+        "get_settings",
+        lambda: SimpleNamespace(server=SimpleNamespace(token="test-token")),
+    )
+
+    try:
+        await runtime.start(app)
+        headers = {"Authorization": "Bearer test-token"}
+        assert "/api/outfit/recommendations" in _route_paths(app)
+
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app),
+            base_url="http://synthetic-host",
+        ) as client:
+            health_before = await client.get("/health")
+            await _seed_complete_inventory(client, headers=headers)
+            recommendation = await client.post(
+                "/api/outfit/recommendations",
+                headers=headers,
+                json={"occasion": "commute", "day_kind": "workday"},
+            )
+            health_after = await client.get("/health")
+
+        assert recommendation.status_code == 200
+        assert recommendation.headers["cache-control"] == "private, no-store"
+        payload = recommendation.json()
+        assert payload["status"] == expected_status
+        assert len(payload["option_item_ids"]) == expected_option_count
+        assert health_after.json() == health_before.json()
+        assert weather_cache.location_reads == 2
+        assert weather_cache.observation_reads == 2
+
+        with sqlite3.connect(root / "outfit" / "wardrobe.db") as connection:
+            persisted = connection.execute(
+                """
+                SELECT owner_person_id, snapshot_id, created_at_ms, expires_at_ms
+                FROM outfit_recommendation_snapshots
+                """
+            ).fetchone()
+        assert persisted is not None
+        assert persisted[0] == "chase"
+        assert persisted[1] == payload["snapshot_id"]
+        assert persisted[3] - persisted[2] == 86_400_000
     finally:
         await runtime.stop(app)
 

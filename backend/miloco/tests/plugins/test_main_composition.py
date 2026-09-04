@@ -111,6 +111,9 @@ def test_main_wires_runtime_after_manager_and_stops_it_before_core_teardown() ->
     )
     assert yield_line < runtime_stop_line < weather_stop_line < core_stop_line
     assert "_app.state.weather_runtime = weather_runtime" in source
+    assert "weather_cache = None" in source
+    assert "weather_cache = weather_runtime.cache" in source
+    assert "weather_cache=weather_cache" in source
     assert "weather_runtime_start_failed" in source
     assert "weather_runtime_stop_failed" in source
     assert "_app.state.plugin_runtime = plugin_runtime" in source

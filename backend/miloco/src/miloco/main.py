@@ -381,6 +381,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         raise
 
     weather_runtime = None
+    weather_cache = None
     try:
         weather_runtime = build_host_weather_runtime(
             settings.weather,
@@ -389,6 +390,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         if weather_runtime is not None:
             await weather_runtime.start()
             _app.state.weather_runtime = weather_runtime
+            weather_cache = weather_runtime.cache
     except Exception:
         logger.warning("weather_runtime_start_failed")
         if weather_runtime is not None:
@@ -401,6 +403,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         plugin_factories = build_builtin_plugin_factories(
             settings,
             get_manager().person_service,
+            weather_cache=weather_cache,
         )
         plugin_runtime = HostPluginRuntime(plugin_factories)
         _app.state.plugin_runtime = plugin_runtime
