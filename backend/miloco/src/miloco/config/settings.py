@@ -15,6 +15,7 @@ from __future__ import annotations
 import functools
 import json
 import logging
+import re
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, ClassVar, Literal
@@ -22,6 +23,7 @@ from typing import Any, ClassVar, Literal
 import yaml
 from pydantic import (
     BaseModel,
+    ConfigDict,
     Field,
     SecretStr,
     computed_field,
@@ -524,6 +526,63 @@ class OutfitSettings(BaseModel):
         return value.strip() if isinstance(value, str) else value
 
 
+class WeatherSettings(BaseModel):
+    """Host-owned city weather configuration, independent from Outfit."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = Field(
+        default=False,
+        description="是否启用宿主城市天气缓存",
+    )
+    provider: Literal["open_meteo"] = Field(
+        default="open_meteo",
+        description="构建期允许的天气供应方",
+    )
+    city_name: str | None = Field(
+        default=None,
+        description="私有部署城市；跟踪默认值为空",
+    )
+    country_code: str = Field(
+        default="CN",
+        description="ISO 3166-1 alpha-2 国家代码",
+    )
+    refresh_interval_seconds: int = Field(
+        default=1_800,
+        ge=300,
+        le=86_400,
+        description="天气刷新最小间隔秒数",
+    )
+    validity_seconds: int = Field(
+        default=3_600,
+        ge=600,
+        le=86_400,
+        description="成功天气观察的有效秒数",
+    )
+
+    @field_validator("city_name", mode="before")
+    @classmethod
+    def _normalize_city_name(cls, value: str | None) -> str | None:
+        if isinstance(value, str):
+            return value.strip() or None
+        return value
+
+    @field_validator("country_code", mode="before")
+    @classmethod
+    def _normalize_country_code(cls, value: str) -> str:
+        return value.strip().upper() if isinstance(value, str) else value
+
+    @model_validator(mode="after")
+    def _validate_location_and_timing(self) -> "WeatherSettings":
+        if self.enabled and self.city_name is None:
+            raise ValueError("enabled weather requires city_name")
+        if re.fullmatch(r"[A-Z]{2}", self.country_code) is None:
+            raise ValueError("country_code must be ISO alpha-2")
+        if self.validity_seconds <= self.refresh_interval_seconds:
+            raise ValueError("weather validity must exceed refresh interval")
+        return self
+
+
 class DirectorySettings(BaseModel):
     """目录配置；派生路径均由 ``$MILOCO_HOME`` + ``storage`` 计算。"""
 
@@ -724,6 +783,10 @@ class MilocoSettings(BaseSettings):
         default_factory=PerfSettings,
         description="性能指标总开关与报告参数",
     )
+    weather: WeatherSettings = Field(
+        default_factory=WeatherSettings,
+        description="宿主城市天气缓存配置",
+    )
     features: FeaturesSettings = Field(
         default_factory=FeaturesSettings,
         description="产品级实验性功能开关（默认关）",
@@ -920,6 +983,7 @@ __all__ = [
     "ScheduleSettings",
     "SchedulerSettings",
     "ServerSettings",
+    "WeatherSettings",
     "get_settings",
     "reset_settings",
 ]

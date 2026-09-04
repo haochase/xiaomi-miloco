@@ -104,6 +104,49 @@
       },
       "required": ["omni"]
     },
+    "weather": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "宿主城市天气缓存配置；默认关闭且不保存真实城市",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "是否启用宿主城市天气缓存"
+        },
+        "provider": {
+          "type": "string",
+          "enum": ["open_meteo"],
+          "default": "open_meteo",
+          "description": "构建期允许的天气供应方"
+        },
+        "city_name": {
+          "anyOf": [{"type": "string"}, {"type": "null"}],
+          "default": null,
+          "description": "私有部署城市；跟踪默认值为空"
+        },
+        "country_code": {
+          "type": "string",
+          "default": "CN",
+          "pattern": "^[A-Z]{2}$",
+          "description": "ISO 3166-1 alpha-2 国家代码"
+        },
+        "refresh_interval_seconds": {
+          "type": "integer",
+          "default": 1800,
+          "minimum": 300,
+          "maximum": 86400,
+          "description": "天气刷新最小间隔秒数"
+        },
+        "validity_seconds": {
+          "type": "integer",
+          "default": 3600,
+          "minimum": 600,
+          "maximum": 86400,
+          "description": "成功天气观察的有效秒数"
+        }
+      }
+    },
     "features": {
       "type": "object",
       "additionalProperties": true,

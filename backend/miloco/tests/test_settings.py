@@ -19,7 +19,7 @@ import pytest
 import yaml
 from jsonschema import Draft202012Validator
 from miloco.config import SETTINGS_SCHEMA, get_settings, reset_settings
-from miloco.config.settings import MilocoSettings
+from miloco.config.settings import MilocoSettings, WeatherSettings
 
 
 @pytest.fixture(autouse=True)
@@ -43,6 +43,11 @@ def test_schema_is_valid_draft_2020_12() -> None:
 def test_outfit_settings_is_publicly_exported() -> None:
     """可选插件可显式导入 OutfitSettings，而不依赖内部模块实现。"""
     assert "OutfitSettings" in settings_module.__all__
+
+
+def test_weather_settings_is_publicly_exported() -> None:
+    """宿主天气组合可以显式导入 WeatherSettings。"""
+    assert "WeatherSettings" in settings_module.__all__
 
 
 def _collect_schema_fields(schema: dict, prefix: str = "") -> dict[str, dict]:
@@ -167,6 +172,85 @@ def test_features_env_override(monkeypatch) -> None:
     s = get_settings()
     assert s.features.pet_recognition is True
     assert s.features.pet_head_grounding is True
+
+
+def test_weather_defaults_are_disabled_and_location_free() -> None:
+    """跟踪默认配置不启用天气，也不保存用户真实城市。"""
+    weather = get_settings().weather
+
+    assert weather.enabled is False
+    assert weather.provider == "open_meteo"
+    assert weather.city_name is None
+    assert weather.country_code == "CN"
+    assert weather.refresh_interval_seconds == 1_800
+    assert weather.validity_seconds == 3_600
+
+
+def test_weather_env_override_normalizes_beijing_and_country(monkeypatch) -> None:
+    """私有部署可通过嵌套环境变量配置北京市。"""
+    monkeypatch.setenv("MILOCO_WEATHER__ENABLED", "true")
+    monkeypatch.setenv("MILOCO_WEATHER__CITY_NAME", "  北京市  ")
+    monkeypatch.setenv("MILOCO_WEATHER__COUNTRY_CODE", " cn ")
+    reset_settings()
+
+    weather = get_settings().weather
+
+    assert weather.enabled is True
+    assert weather.city_name == "北京市"
+    assert weather.country_code == "CN"
+
+
+def test_enabled_weather_requires_nonblank_city() -> None:
+    """启用天气但没有城市时必须关闭失败。"""
+    with pytest.raises(ValueError, match="city_name"):
+        WeatherSettings.model_validate({"enabled": True, "city_name": "  \t  "})
+
+
+def test_weather_rejects_unlisted_provider() -> None:
+    """配置不得注入任意 provider、模块或 URL。"""
+    with pytest.raises(ValueError):
+        WeatherSettings.model_validate(
+            {
+                "enabled": True,
+                "provider": "https://private.invalid/weather",
+                "city_name": "北京市",
+            }
+        )
+
+
+def test_weather_rejects_endpoint_and_unknown_configuration() -> None:
+    """天气配置不能覆盖固定 endpoint 或注入未审查字段。"""
+    with pytest.raises(ValueError):
+        WeatherSettings.model_validate(
+            {
+                "base_url": "https://private.invalid/weather",
+                "module_path": "private.weather.Provider",
+            }
+        )
+
+
+@pytest.mark.parametrize("country_code", ["", "C", "CHN", "C1", "中国"])
+def test_weather_rejects_invalid_country_codes(country_code: str) -> None:
+    with pytest.raises(ValueError, match="country_code"):
+        WeatherSettings.model_validate({"country_code": country_code})
+
+
+@pytest.mark.parametrize(
+    "weather",
+    [
+        {"refresh_interval_seconds": 299},
+        {"refresh_interval_seconds": 86_401},
+        {"validity_seconds": 599},
+        {"validity_seconds": 86_401},
+        {"refresh_interval_seconds": 1_800, "validity_seconds": 1_800},
+        {"refresh_interval_seconds": 3_600, "validity_seconds": 1_800},
+    ],
+)
+def test_weather_rejects_unsafe_refresh_and_validity_windows(
+    weather: dict[str, int],
+) -> None:
+    with pytest.raises(ValueError):
+        WeatherSettings.model_validate(weather)
 
 
 def test_outfit_feature_defaults() -> None:

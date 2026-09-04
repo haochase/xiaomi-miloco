@@ -144,6 +144,15 @@ perf:
     agent_runs_days: 7         # agent_runs 表保留天数
     trace_jsonl_days: 7        # agent jsonl.gz 文件保留天数
 
+# 宿主城市天气缓存（默认关闭；真实城市只写私有 config.json / env）
+weather:
+  enabled: false
+  provider: "open_meteo"
+  city_name: null
+  country_code: "CN"
+  refresh_interval_seconds: 1800
+  validity_seconds: 3600
+
 # 产品级实验性功能开关（默认关，住户在 web 显式开启）
 features:
   outfit:
