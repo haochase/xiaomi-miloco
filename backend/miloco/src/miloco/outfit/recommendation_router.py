@@ -37,9 +37,16 @@ class RecommendationHandler(Protocol):
     ) -> OutfitRecommendationResponse: ...
 
 
+class RecommendationSnapshotWriter(Protocol):
+    """Persist one bounded snapshot using host-fixed owner and expiry policy."""
+
+    def save(self, snapshot: RecommendationSnapshot) -> None: ...
+
+
 def create_recommendation_router(
     *,
     recommendation_service: RecommendationHandler,
+    snapshot_writer: RecommendationSnapshotWriter,
     snapshot_id_factory: Callable[[], str],
     clock_ms: Callable[[], int],
     ranking_version: str,
@@ -104,6 +111,7 @@ def create_recommendation_router(
                 created_at_ms=clock_ms(),
                 ranking_version=ranking_version,
             )
+            snapshot_writer.save(snapshot)
         except Exception:
             return _internal_error_response()
 

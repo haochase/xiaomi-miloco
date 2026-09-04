@@ -14,7 +14,11 @@ from miloco.outfit.composition import OutfitCandidate
 from miloco.outfit.context import OutfitClarification, OutfitRecommendationContext
 from miloco.outfit.ranking import RankedOutfitOption, RankingScoreComponent
 from miloco.outfit.recommendation import OutfitRecommendationResult
-from miloco.outfit.recommendation_router import create_recommendation_router
+from miloco.outfit.recommendation_api import RecommendationSnapshot
+from miloco.outfit.recommendation_router import (
+    RecommendationSnapshotWriter,
+    create_recommendation_router,
+)
 from miloco.outfit.recommendation_service import OutfitRecommendationResponse
 
 
@@ -97,17 +101,37 @@ class _RecordingRecommendationService:
         return self.response
 
 
+@dataclass
+class _RecordingSnapshotWriter:
+    error: Exception | None = None
+    snapshots: list[RecommendationSnapshot] = field(default_factory=list)
+
+    def save(self, snapshot: RecommendationSnapshot) -> None:
+        self.snapshots.append(snapshot)
+        if self.error is not None:
+            raise self.error
+
+
+def _accept_snapshot_writer(
+    writer: RecommendationSnapshotWriter,
+) -> RecommendationSnapshotWriter:
+    return writer
+
+
 def _app(
     service: _RecordingRecommendationService,
     *,
     snapshot_ids: list[str] | None = None,
+    snapshot_writer: _RecordingSnapshotWriter | None = None,
     authentication_dependency=_require_test_bearer,
 ) -> FastAPI:
     ids = iter(snapshot_ids or ["rec-router-1"])
+    writer = snapshot_writer or _RecordingSnapshotWriter()
     app = FastAPI()
     app.include_router(
         create_recommendation_router(
             recommendation_service=service,
+            snapshot_writer=writer,
             snapshot_id_factory=lambda: next(ids),
             clock_ms=lambda: 321,
             ranking_version="deterministic-v1",
@@ -129,7 +153,8 @@ def _body(**overrides: object) -> dict[str, object]:
 
 def test_recommendation_requires_bearer_and_uses_host_snapshot_values() -> None:
     service = _RecordingRecommendationService()
-    app = _app(service)
+    writer = _RecordingSnapshotWriter()
+    app = _app(service, snapshot_writer=writer)
 
     with TestClient(app) as client:
         unauthorized = client.post("/api/outfit/recommendations", json=_body())
@@ -162,12 +187,16 @@ def test_recommendation_requires_bearer_and_uses_host_snapshot_values() -> None:
     assert service.contexts == [
         OutfitRecommendationContext(occasion="commute", day_kind="workday")
     ]
+    assert _accept_snapshot_writer(writer) is writer
+    assert len(writer.snapshots) == 1
+    assert writer.snapshots[0].model_dump(mode="json") == response.json()
     assert "internal" not in response.text
 
 
 def test_recommendation_authenticates_before_parsing_malformed_json() -> None:
     service = _RecordingRecommendationService()
-    app = _app(service)
+    writer = _RecordingSnapshotWriter()
+    app = _app(service, snapshot_writer=writer)
 
     with TestClient(app) as client:
         unauthorized = client.post(
@@ -188,13 +217,15 @@ def test_recommendation_authenticates_before_parsing_malformed_json() -> None:
     assert malformed.json() == {"detail": "invalid_outfit_request"}
     assert malformed.headers["cache-control"] == "private, no-store"
     assert service.contexts == []
+    assert writer.snapshots == []
 
 
 def test_recommendation_rejects_owner_provider_and_media_selectors_before_service() -> (
     None
 ):
     service = _RecordingRecommendationService()
-    app = _app(service)
+    writer = _RecordingSnapshotWriter()
+    app = _app(service, snapshot_writer=writer)
 
     with TestClient(app) as client:
         response = client.post(
@@ -212,10 +243,12 @@ def test_recommendation_rejects_owner_provider_and_media_selectors_before_servic
     assert response.headers["cache-control"] == "private, no-store"
     assert "private" not in response.text
     assert service.contexts == []
+    assert writer.snapshots == []
 
 
 def test_needs_context_returns_fixed_problem_without_allocating_snapshot() -> None:
     service = _RecordingRecommendationService(response=_needs_context_response())
+    writer = _RecordingSnapshotWriter()
     snapshot_calls = 0
 
     def snapshot_id_factory() -> str:
@@ -227,6 +260,7 @@ def test_needs_context_returns_fixed_problem_without_allocating_snapshot() -> No
     app.include_router(
         create_recommendation_router(
             recommendation_service=service,
+            snapshot_writer=writer,
             snapshot_id_factory=snapshot_id_factory,
             clock_ms=lambda: 321,
             ranking_version="deterministic-v1",
@@ -245,11 +279,17 @@ def test_needs_context_returns_fixed_problem_without_allocating_snapshot() -> No
     assert response.json() == {"code": "recommendation_needs_context"}
     assert response.headers["cache-control"] == "private, no-store"
     assert snapshot_calls == 0
+    assert writer.snapshots == []
 
 
-def test_insufficient_inventory_returns_nonpersistent_empty_snapshot() -> None:
+def test_insufficient_inventory_persists_empty_snapshot_before_response() -> None:
     service = _RecordingRecommendationService(response=_insufficient_response())
-    app = _app(service, snapshot_ids=["rec-sparse-1"])
+    writer = _RecordingSnapshotWriter()
+    app = _app(
+        service,
+        snapshot_ids=["rec-sparse-1"],
+        snapshot_writer=writer,
+    )
 
     with TestClient(app) as client:
         response = client.post(
@@ -262,13 +302,16 @@ def test_insufficient_inventory_returns_nonpersistent_empty_snapshot() -> None:
     assert response.json()["snapshot_id"] == "rec-sparse-1"
     assert response.json()["status"] == "insufficient_inventory"
     assert response.json()["option_item_ids"] == []
+    assert len(writer.snapshots) == 1
+    assert writer.snapshots[0].model_dump(mode="json") == response.json()
 
 
 def test_recommendation_failure_is_fixed_and_does_not_reflect_internal_detail() -> None:
     service = _RecordingRecommendationService(
         error=RuntimeError("E:/private/provider-response.json")
     )
-    app = _app(service)
+    writer = _RecordingSnapshotWriter()
+    app = _app(service, snapshot_writer=writer)
 
     with TestClient(app) as client:
         response = client.post(
@@ -281,6 +324,27 @@ def test_recommendation_failure_is_fixed_and_does_not_reflect_internal_detail() 
     assert response.json() == {"detail": "outfit_request_failed"}
     assert response.headers["cache-control"] == "private, no-store"
     assert "private" not in response.text
+    assert writer.snapshots == []
+
+
+def test_snapshot_writer_failure_returns_fixed_error_after_one_attempt() -> None:
+    private_detail = "owner=private; path=E:/private/snapshot.db; payload=private"
+    service = _RecordingRecommendationService()
+    writer = _RecordingSnapshotWriter(error=RuntimeError(private_detail))
+    app = _app(service, snapshot_writer=writer)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/outfit/recommendations",
+            json=_body(),
+            headers=_headers(),
+        )
+
+    assert response.status_code == 500
+    assert response.json() == {"detail": "outfit_request_failed"}
+    assert response.headers["cache-control"] == "private, no-store"
+    assert private_detail not in response.text
+    assert len(writer.snapshots) == 1
 
 
 @pytest.mark.parametrize(
@@ -291,7 +355,12 @@ def test_recommendation_rejects_false_authentication_adapters_before_service(
     authentication_dependency,
 ) -> None:
     service = _RecordingRecommendationService()
-    app = _app(service, authentication_dependency=authentication_dependency)
+    writer = _RecordingSnapshotWriter()
+    app = _app(
+        service,
+        snapshot_writer=writer,
+        authentication_dependency=authentication_dependency,
+    )
 
     with TestClient(app) as client:
         response = client.post(
@@ -304,3 +373,4 @@ def test_recommendation_rejects_false_authentication_adapters_before_service(
     assert response.json() == {"detail": "outfit_unauthorized"}
     assert response.headers["cache-control"] == "private, no-store"
     assert service.contexts == []
+    assert writer.snapshots == []
