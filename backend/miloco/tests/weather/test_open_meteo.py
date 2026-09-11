@@ -139,6 +139,32 @@ async def test_city_resolution_reports_missing_without_retry(payload: object) ->
 
 
 @pytest.mark.asyncio
+async def test_city_resolution_maps_provider_error_envelope_to_fixed_failure() -> None:
+    provider = OpenMeteoWeatherProvider(
+        _JsonTransport({"error": True, "reason": "redacted provider detail"})
+    )
+
+    with pytest.raises(WeatherProviderError) as exc_info:
+        await provider.resolve_city(_query())
+
+    assert exc_info.value.code == "provider_failed"
+    assert "redacted provider detail" not in repr(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_forecast_maps_provider_error_envelope_to_fixed_failure() -> None:
+    provider = OpenMeteoWeatherProvider(
+        _JsonTransport({"error": True, "reason": "redacted provider detail"})
+    )
+
+    with pytest.raises(WeatherProviderError) as exc_info:
+        await provider.fetch_current_condition(_location())
+
+    assert exc_info.value.code == "provider_failed"
+    assert "redacted provider detail" not in repr(exc_info.value)
+
+
+@pytest.mark.asyncio
 async def test_city_resolution_rejects_multiple_exact_city_candidates() -> None:
     transport = _JsonTransport(
         {"results": [_city_result(), _city_result(name="北京市")]}

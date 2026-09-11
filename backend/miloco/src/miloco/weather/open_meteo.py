@@ -114,6 +114,8 @@ def _parse_city(
 ) -> ResolvedWeatherLocation:
     if not isinstance(payload, dict):
         raise WeatherProviderError("provider_invalid")
+    if payload.get("error") is True:
+        raise WeatherProviderError("provider_failed")
     results = payload.get("results")
     if results is None:
         raise WeatherProviderError("city_missing")
@@ -164,6 +166,8 @@ def _parse_city(
 def _parse_current_condition(payload: object) -> WeatherCondition:
     if not isinstance(payload, dict):
         raise WeatherProviderError("provider_invalid")
+    if payload.get("error") is True:
+        raise WeatherProviderError("provider_failed")
     current = payload.get("current")
     if not isinstance(current, dict):
         raise WeatherProviderError("provider_invalid")
