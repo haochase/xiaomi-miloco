@@ -1,11 +1,23 @@
 import { useState } from "react";
 import type { DemoState } from "./demoSchema";
 import { SceneCanvas } from "./SceneCanvas";
+import { redactRgbaFrame } from "./redactFrame";
+
+const syntheticFrame = new Uint8ClampedArray([
+  70, 120, 100, 255, 70, 120, 100, 255,
+  190, 140, 110, 255, 190, 140, 110, 255,
+]);
 
 export function App({ state }: { state: DemoState }) {
   const [privacy, setPrivacy] = useState(state.privacy);
+  const [redacted, setRedacted] = useState(false);
   const replaySyntheticPrivacyResult = () => {
-    const next = { ...privacy, status: "processed" as const, temporaryFrameCleared: true, frameCount: 1, errorCode: null };
+    const result = redactRgbaFrame(
+      { width: 2, height: 2, pixels: syntheticFrame },
+      [{ x: 1, y: 0, width: 1, height: 2 }],
+    );
+    setRedacted(result.redactedPixelCount === 2);
+    const next = { ...privacy, status: "processed" as const, temporaryFrameCleared: false, frameCount: 1, errorCode: null };
     setPrivacy(next);
   };
 
@@ -32,12 +44,16 @@ export function App({ state }: { state: DemoState }) {
               <h2>隐私处理</h2>
               <span className="quiet-label">单帧演示</span>
             </div>
-            <p className="large-status">{privacy.temporaryFrameCleared ? "临时帧已清理" : privacy.status === "failed" ? "临时帧清理失败" : "等待处理"}</p>
+            <p className="large-status">{privacy.status === "processed" ? "合成帧仅在内存处理" : privacy.status === "failed" ? "处理未完成" : "等待处理"}</p>
             <div className="metric-row">
               <span>处理帧数</span><strong>{privacy.frameCount}</strong>
             </div>
             <div className="metric-row">
               <span>展示内容</span><strong>结构化摘要</strong>
+            </div>
+            <div className="comparison" aria-label="合成帧遮挡示例">
+              <div className="comparison-frame source"><span>合成输入</span><i /><i /><i /><i /></div>
+              <div className={`comparison-frame ${redacted ? "redacted" : "pending"}`}><span>{redacted ? "已遮挡" : "待处理"}</span><i /><i /><i /><i /></div>
             </div>
             {privacy.status !== "processed" && <button className="action-button" onClick={replaySyntheticPrivacyResult}>回放合成处理结果</button>}
             {privacy.errorCode && <p className="error-copy">错误码：{privacy.errorCode}</p>}
