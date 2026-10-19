@@ -12,4 +12,11 @@ describe("selectDemoScenario", () => {
   it("keeps the synthetic default when the scenario is unknown", () => {
     expect(selectDemoScenario("unexpected").peopleCount).toBe(1);
   });
+
+  it("loads only the redacted fixture projection", () => {
+    const state = selectDemoScenario("fixture");
+    expect(state.peopleCount).toBe(0);
+    expect(state.rooms[0]?.width).toBeNull();
+    expect(state.outfit.candidates).toEqual(["浅色上衣"]);
+  });
 });
