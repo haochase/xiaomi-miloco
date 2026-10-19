@@ -23,4 +23,14 @@ describe("projectHostFacts", () => {
     expect(serialized).toContain("浅色上衣");
     expect(serialized).not.toMatch(/private-owner|private-token|raw_provider_answer|secret/);
   });
+
+  it("rejects invalid counts and room geometry", () => {
+    expect(() => projectHostFacts({ anonymousPeopleCount: -1 })).toThrow("invalid host facts");
+    expect(() => projectHostFacts({ rooms: [{ id: "living", name: "客厅", width: -1, depth: 5, confirmed: true }] })).toThrow("invalid host facts");
+  });
+
+  it("rejects display values that look like paths or credentials", () => {
+    expect(() => projectHostFacts({ rooms: [{ id: "living", name: "C:\\private\\home", width: 7, depth: 5, confirmed: true }] })).toThrow("invalid host facts");
+    expect(() => projectHostFacts({ outfit: { scene: "通勤", candidates: ["token=private"], ready: true } })).toThrow("invalid host facts");
+  });
 });
