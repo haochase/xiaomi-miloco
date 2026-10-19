@@ -75,7 +75,7 @@ export function App({ state }: { state: DemoState }) {
             <div className="block-heading"><h2>空间证据</h2><span className="quiet-label">可校正</span></div>
             {state.rooms.map((room) => (
               <div className="evidence-row" key={room.id}>
-                <span>{room.name}</span><span className={`evidence-tag ${room.evidence}`}>{room.evidence === "confirmed" ? "已确认" : "推断"}</span>
+                <span>{room.name}</span><span className={`evidence-tag ${room.evidence}`}>{room.evidence === "confirmed" ? "已确认" : room.evidence === "inferred" ? "推断" : "未知"}</span>
               </div>
             ))}
           </section>

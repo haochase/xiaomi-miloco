@@ -7,8 +7,25 @@ describe("projectHostFacts", () => {
     const state = projectHostFacts({});
     expect(state.rooms).toEqual([]);
     expect(state.devices).toEqual([]);
-    expect(state.peopleCount).toBe(0);
+    expect(state.peopleCount).toBeNull();
     expect(state.outfit.status).toBe("unavailable");
+  });
+
+  it("keeps an explicit zero distinct from an unknown people count", () => {
+    expect(projectHostFacts({ anonymousPeopleCount: 0 }).peopleCount).toBe(0);
+  });
+
+  it("projects a named room without inventing geometry or confirmation", () => {
+    const state = projectHostFacts({ rooms: [{ id: "living", name: "客厅" }] });
+    expect(state.rooms).toEqual([{ id: "living", name: "客厅", width: null, depth: null, evidence: "unknown" }]);
+  });
+
+  it("requires dimensions before treating a room as confirmed", () => {
+    expect(() => projectHostFacts({ rooms: [{ id: "living", name: "客厅", confirmed: true }] })).toThrow("invalid host facts");
+  });
+
+  it("rejects partial geometry", () => {
+    expect(() => projectHostFacts({ rooms: [{ id: "living", name: "客厅", width: 7 }] })).toThrow("invalid host facts");
   });
 
   it("projects only bounded facts and drops extra sensitive fields", () => {

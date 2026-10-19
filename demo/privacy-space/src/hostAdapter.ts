@@ -1,7 +1,7 @@
 import type { DemoState } from "./demoSchema";
 
 export type HostPrivacyFacts = {
-  rooms?: Array<{ id: string; name: string; width: number; depth: number; confirmed: boolean }>;
+  rooms?: Array<{ id: string; name: string; width?: number; depth?: number; confirmed?: boolean }>;
   anonymousPeopleCount?: number;
   outfit?: { scene: string; candidates: string[]; ready: boolean };
 };
@@ -9,7 +9,7 @@ export type HostPrivacyFacts = {
 const unknownState: DemoState = {
   rooms: [],
   devices: [],
-  peopleCount: 0,
+  peopleCount: null,
   outfit: { scene: "", status: "unavailable", candidates: [] },
   privacy: { status: "idle", temporaryFrameCleared: false, frameCount: 0, errorCode: null },
 };
@@ -34,11 +34,11 @@ function validFacts(facts: HostPrivacyFacts): boolean {
       if (
         !safeDisplayText(room.id) ||
         !safeDisplayText(room.name) ||
-        !Number.isFinite(room.width) ||
-        !Number.isFinite(room.depth) ||
-        room.width <= 0 || room.depth <= 0 ||
-        room.width > 100 || room.depth > 100 ||
-        typeof room.confirmed !== "boolean"
+        ((room.width === undefined) !== (room.depth === undefined)) ||
+        (room.width !== undefined && (!Number.isFinite(room.width) || room.width <= 0 || room.width > 100)) ||
+        (room.depth !== undefined && (!Number.isFinite(room.depth) || room.depth <= 0 || room.depth > 100)) ||
+        (room.confirmed !== undefined && typeof room.confirmed !== "boolean") ||
+        (room.confirmed === true && room.width === undefined)
       ) return false;
     }
   }
@@ -61,11 +61,11 @@ export function projectHostFacts(facts: HostPrivacyFacts): DemoState {
     rooms: (facts.rooms ?? []).map((room) => ({
       id: room.id,
       name: room.name,
-      width: room.width,
-      depth: room.depth,
-      evidence: room.confirmed ? "confirmed" : "unknown",
+      width: room.width ?? null,
+      depth: room.depth ?? null,
+      evidence: room.confirmed === true ? "confirmed" : "unknown",
     })),
-    peopleCount: facts.anonymousPeopleCount ?? 0,
+    peopleCount: facts.anonymousPeopleCount ?? null,
     outfit: facts.outfit
       ? {
           scene: facts.outfit.scene,

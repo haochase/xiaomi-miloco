@@ -1,11 +1,11 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
-import { demoState } from "./demoData";
+import { selectDemoScenario } from "./demoScenario";
 import "./styles.css";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <App state={demoState} />
+    <App state={selectDemoScenario(new URLSearchParams(window.location.search).get("scenario"))} />
   </StrictMode>,
 );

@@ -3,8 +3,8 @@ export type EvidenceLevel = "confirmed" | "inferred" | "unknown";
 export type DemoRoom = {
   id: string;
   name: string;
-  width: number;
-  depth: number;
+  width: number | null;
+  depth: number | null;
   evidence: EvidenceLevel;
 };
 
@@ -17,7 +17,7 @@ export type DemoDevice = {
 export type DemoState = {
   rooms: DemoRoom[];
   devices: DemoDevice[];
-  peopleCount: number;
+  peopleCount: number | null;
   outfit: {
     scene: string;
     status: "ready" | "insufficient" | "unavailable";
