@@ -1,4 +1,4 @@
-import { readFile, unlink } from "node:fs/promises";
+import { lstat, readFile, unlink } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
 import { redactRgbaFrame, type RedactionRegion } from "./redactFrame";
 
@@ -8,7 +8,11 @@ type ProcessRequest = {
   width: number;
   height: number;
   regions: RedactionRegion[];
+  statFrame?: (path: string) => Promise<{ size: number; isSymbolicLink(): boolean; isFile(): boolean }>;
+  readFrame?: (path: string) => Promise<Uint8Array>;
 };
+
+const MAX_FRAME_BYTES = 16 * 1024 * 1024;
 
 type ProcessResult = {
   status: "processed" | "failed";
@@ -30,7 +34,14 @@ export async function processPrivateRgbaFrame(request: ProcessRequest): Promise<
   let errorCode: ProcessResult["errorCode"] = null;
   let temporaryFrameCleared = false;
   try {
-    const bytes = await readFile(source);
+    const metadata = await (request.statFrame ?? lstat)(source);
+    const expectedBytes = request.width * request.height * 4;
+    if (
+      !metadata.isFile() || metadata.isSymbolicLink() ||
+      !Number.isSafeInteger(expectedBytes) || expectedBytes <= 0 ||
+      expectedBytes > MAX_FRAME_BYTES || metadata.size !== expectedBytes
+    ) throw new Error("invalid frame metadata");
+    const bytes = await (request.readFrame ?? readFile)(source);
     const result = redactRgbaFrame(
       { width: request.width, height: request.height, pixels: new Uint8ClampedArray(bytes) },
       request.regions,
