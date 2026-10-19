@@ -23,10 +23,14 @@ describe("processPrivateRgbaFrame", () => {
 
     expect(result.status).toBe("processed");
     expect(result.temporaryFrameCleared).toBe(true);
-    expect([...result.redactedPixels!]).toEqual([10, 20, 30, 255, 0, 0, 0, 255]);
+    expect([...result.getRedactedPixels()!]).toEqual([10, 20, 30, 255, 0, 0, 0, 255]);
+    const firstRead = result.getRedactedPixels()!;
+    firstRead[0] = 99;
+    expect(result.getRedactedPixels()![0]).toBe(10);
     expect(JSON.stringify(result)).not.toContain(path);
     expect(JSON.stringify(result)).not.toContain("redactedPixels");
     expect(JSON.stringify(result)).not.toContain("10");
+    expect(Object.keys(result)).not.toContain("redactedPixels");
     await expect(readFile(path)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
@@ -42,7 +46,7 @@ describe("processPrivateRgbaFrame", () => {
     });
 
     expect(result).toMatchObject({ status: "failed", errorCode: "privacy_processing_failed", temporaryFrameCleared: true });
-    expect(result.redactedPixels).toBeNull();
+    expect(result.getRedactedPixels()).toBeNull();
     await expect(readFile(path)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
@@ -57,7 +61,8 @@ describe("processPrivateRgbaFrame", () => {
       regions: [{ x: 0, y: 0, width: 1, height: 1 }],
     });
 
-    expect(result).toMatchObject({ status: "failed", temporaryFrameCleared: false, redactedPixels: null });
+    expect(result).toMatchObject({ status: "failed", temporaryFrameCleared: false });
+    expect(result.getRedactedPixels()).toBeNull();
     await expect(readFile(outside)).resolves.toEqual(Buffer.from([10, 20, 30, 255]));
   });
 
@@ -71,7 +76,8 @@ describe("processPrivateRgbaFrame", () => {
       deleteFrame: async () => { throw new Error("cleanup failed"); },
     });
 
-    expect(result).toMatchObject({ status: "failed", errorCode: "temporary_frame_cleanup_failed", temporaryFrameCleared: false, redactedPixels: null });
+    expect(result).toMatchObject({ status: "failed", errorCode: "temporary_frame_cleanup_failed", temporaryFrameCleared: false });
+    expect(result.getRedactedPixels()).toBeNull();
   });
 
   it("does not follow a symlink to a file outside the temporary root", async () => {
@@ -105,7 +111,8 @@ describe("processPrivateRgbaFrame", () => {
     const statFrame = vi.fn(async () => ({ size: 5_000_000, isSymbolicLink: () => false, isFile: () => true }));
     const result = await processPrivateRgbaFrame({ path, temporaryRoot: root, width: 1, height: 1, regions: [], readFrame, statFrame });
 
-    expect(result).toMatchObject({ status: "failed", errorCode: "privacy_processing_failed", temporaryFrameCleared: true, redactedPixels: null });
+    expect(result).toMatchObject({ status: "failed", errorCode: "privacy_processing_failed", temporaryFrameCleared: true });
+    expect(result.getRedactedPixels()).toBeNull();
     expect(readFrame).not.toHaveBeenCalled();
     expect(statFrame).toHaveBeenCalledOnce();
     await expect(readFile(path)).rejects.toMatchObject({ code: "ENOENT" });
@@ -121,7 +128,8 @@ describe("processPrivateRgbaFrame", () => {
 
     const result = await processPrivateRgbaFrame({ path, temporaryRoot: root, width: 1, height: 1, regions: [], statFrame, readFrame });
 
-    expect(result).toMatchObject({ status: "failed", errorCode: "privacy_processing_failed", temporaryFrameCleared: false, redactedPixels: null });
+    expect(result).toMatchObject({ status: "failed", errorCode: "privacy_processing_failed", temporaryFrameCleared: false });
+    expect(result.getRedactedPixels()).toBeNull();
     expect(readFrame).not.toHaveBeenCalled();
     await expect(readFile(path)).resolves.toEqual(Buffer.from([10, 20, 30, 255]));
   });
