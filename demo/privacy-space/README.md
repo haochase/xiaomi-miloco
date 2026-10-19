@@ -14,12 +14,20 @@
 
 ## 本地验证
 
-在 E 盘项目目录安装本地依赖（不要使用 C 盘缓存）：
+在 E 盘 demo 目录安装本地依赖（不要使用 C 盘缓存）：
 
 ```powershell
 $env:PNPM_STORE_DIR = "E:\\new_job\\10-AIProjects\\MilocoDev\\.pnpm-store"
 $env:PNPM_CONFIG_CACHE_DIR = "E:\\new_job\\10-AIProjects\\MilocoDev\\.pnpm-cache"
 pnpm install --offline --ignore-scripts
+```
+
+如果离线元数据缺失，使用仓库 `web` workspace 已安装的 runner 运行测试和构建，不要切换到 C 盘缓存：
+
+```powershell
+$env:NODE_PATH = "E:\\new_job\\10-AIProjects\\MilocoDev\\xiaomi-miloco-outfit-voice-vision\\web\\node_modules"
+& "E:\\new_job\\10-AIProjects\\MilocoDev\\xiaomi-miloco-outfit-voice-vision\\web\\node_modules\\.bin\\vitest.cmd" run --config .\\vitest.config.ts
+& "E:\\new_job\\10-AIProjects\\MilocoDev\\xiaomi-miloco-outfit-voice-vision\\web\\node_modules\\.bin\\vite.cmd" build --config .\\vite.config.ts
 ```
 
 依赖安装完成后可运行：

@@ -1,8 +1,10 @@
-import react from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
 import path from "node:path";
+import { createRequire } from "node:module";
 
 const webRoot = path.resolve(import.meta.dirname, "../../web");
+const require = createRequire(import.meta.url);
+const react = require(path.join(webRoot, "node_modules/@vitejs/plugin-react"));
+const { defineConfig } = require(path.join(webRoot, "node_modules/vite"));
 
 export default defineConfig({
   root: ".",
