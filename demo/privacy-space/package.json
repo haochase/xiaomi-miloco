@@ -1,0 +1,24 @@
+{
+  "name": "miloco-privacy-space-demo",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 4178",
+    "build": "tsc --noEmit && vite build",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "react": "file:../../web/node_modules/react",
+    "react-dom": "file:../../web/node_modules/react-dom"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.2",
+    "@types/react": "file:../../web/node_modules/@types/react",
+    "@types/react-dom": "file:../../web/node_modules/@types/react-dom",
+    "@vitejs/plugin-react": "file:../../web/node_modules/@vitejs/plugin-react",
+    "typescript": "^5.7.2",
+    "vite": "file:../../web/node_modules/vite",
+    "vitest": "^4.1.7"
+  }
+}
