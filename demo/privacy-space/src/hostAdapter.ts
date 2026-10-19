@@ -1,6 +1,7 @@
 import type { DemoState } from "./demoSchema";
 
 export type HostPrivacyFacts = {
+  metadata?: { observedAt: string; expiresAt: string; source: "host" };
   rooms?: Array<{ id: string; name: string; width?: number; depth?: number; confirmed?: boolean }>;
   anonymousPeopleCount?: number;
   outfit?: { scene: string; candidates: string[]; ready: boolean };
