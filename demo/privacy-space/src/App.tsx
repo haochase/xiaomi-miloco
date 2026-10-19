@@ -4,6 +4,7 @@ import { SceneCanvas } from "./SceneCanvas";
 import { redactRgbaFrame } from "./redactFrame";
 import { rgbaPixelsToCss } from "./pixelPreview";
 import { refreshDemoScenario } from "./demoRefresh";
+import { finishRefresh, startRefresh, type DemoRefreshState } from "./refreshState";
 
 const syntheticFrame = new Uint8ClampedArray([
   70, 120, 100, 255, 70, 120, 100, 255,
@@ -13,6 +14,7 @@ const syntheticFrame = new Uint8ClampedArray([
 export function App({ state }: { state: DemoState }) {
   const scenario = new URLSearchParams(window.location.search).get("scenario");
   const [facts, setFacts] = useState(state);
+  const [refreshState, setRefreshState] = useState<DemoRefreshState>({ status: "idle", errorCode: null });
   const [privacy, setPrivacy] = useState(state.privacy);
   const [previewPixels, setPreviewPixels] = useState<Uint8ClampedArray | null>(null);
   const replaySyntheticPrivacyResult = () => {
@@ -81,7 +83,18 @@ export function App({ state }: { state: DemoState }) {
                 <span>{room.name}</span><span className={`evidence-tag ${room.evidence}`}>{room.evidence === "confirmed" ? "已确认" : room.evidence === "inferred" ? "推断" : "未知"}</span>
               </div>
             ))}
-            <button className="action-button" onClick={() => setFacts(refreshDemoScenario(scenario))}>重新读取合成事实</button>
+            <button className="action-button" disabled={refreshState.status === "loading"} onClick={() => {
+              const loading = startRefresh(refreshState);
+              setRefreshState(loading);
+              try {
+                setFacts(refreshDemoScenario(scenario));
+                setRefreshState(finishRefresh(loading, true));
+              } catch {
+                setRefreshState(finishRefresh(loading, false));
+              }
+            }}>{refreshState.status === "loading" ? "正在读取" : "重新读取合成事实"}</button>
+            {refreshState.status === "succeeded" && <p className="refresh-copy">本地合成事实已重新读取</p>}
+            {refreshState.status === "failed" && <p className="error-copy">错误码：{refreshState.errorCode}</p>}
           </section>
         </aside>
       </section>
