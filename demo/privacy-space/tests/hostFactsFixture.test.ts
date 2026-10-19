@@ -35,6 +35,7 @@ describe("parseHostPrivacyFactsFixture", () => {
     expect(() => parseHostPrivacyFactsFixture({ schemaVersion: 1, metadata: { observedAt: "bad", expiresAt: "2026-10-19T10:10:00Z", source: "host" } })).toThrow("invalid host facts fixture");
     expect(() => parseHostPrivacyFactsFixture({ schemaVersion: 1, metadata: { observedAt: "2026-10-19T10:10:00Z", expiresAt: "2026-10-19T09:59:00Z", source: "host" } })).toThrow("invalid host facts fixture");
     expect(() => parseHostPrivacyFactsFixture({ schemaVersion: 1, metadata: { observedAt: "2026-10-19T10:00:00Z", expiresAt: "2026-10-19T10:10:00Z", source: "camera-1" } })).toThrow("invalid host facts fixture");
+    expect(() => parseHostPrivacyFactsFixture({ schemaVersion: 1, metadata: { observedAt: "2026-10-19T10:00:00Z", expiresAt: "2026-10-19T11:01:00Z", source: "host" } })).toThrow("invalid host facts fixture");
   });
 
   it("rejects missing or unsupported schema versions", () => {

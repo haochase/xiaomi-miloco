@@ -23,7 +23,7 @@ function validMetadata(value: unknown): value is HostPrivacyFacts["metadata"] {
   if (!isRecord(value) || typeof value.observedAt !== "string" || typeof value.expiresAt !== "string" || value.source !== "host") return false;
   const observedAt = Date.parse(value.observedAt);
   const expiresAt = Date.parse(value.expiresAt);
-  return Number.isFinite(observedAt) && Number.isFinite(expiresAt) && expiresAt >= observedAt;
+  return Number.isFinite(observedAt) && Number.isFinite(expiresAt) && expiresAt >= observedAt && expiresAt - observedAt <= 60 * 60 * 1000;
 }
 
 export function parseHostPrivacyFactsFixture(value: unknown): HostPrivacyFacts {
