@@ -17,9 +17,9 @@ export const demoState: DemoState = {
     candidates: ["浅色针织上衣 + 深色长裤", "轻薄外套 + 运动鞋"],
   },
   privacy: {
-    status: "processed",
-    temporaryFrameCleared: true,
-    frameCount: 1,
+    status: "idle",
+    temporaryFrameCleared: false,
+    frameCount: 0,
     errorCode: null,
   },
 };

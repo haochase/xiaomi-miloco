@@ -10,6 +10,8 @@ describe("privacy space demo state", () => {
     expect(demoState.devices.some((device) => device.type === "camera")).toBe(true);
     expect(demoState.outfit.candidates.length).toBe(2);
     expect(serialized).not.toMatch(/owner|device_id|token|path|secret|raw|provider/i);
+    expect(demoState.privacy.status).toBe("idle");
+    expect(demoState.privacy.temporaryFrameCleared).toBe(false);
   });
 
 });
