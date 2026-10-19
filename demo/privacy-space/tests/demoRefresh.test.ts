@@ -16,4 +16,11 @@ describe("refreshDemoScenario", () => {
   it("keeps the local refresh state explicit", () => {
     expect(finishRefresh(startRefresh({ status: "idle", errorCode: null }), true).status).toBe("succeeded");
   });
+
+  it("uses a fixed failure state when the local fixture loader fails", () => {
+    expect(finishRefresh(startRefresh({ status: "idle", errorCode: null }), false)).toEqual({
+      status: "failed",
+      errorCode: "fixture_unavailable",
+    });
+  });
 });
