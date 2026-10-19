@@ -25,6 +25,7 @@ export const syntheticRecommendation: {
 
 export const demoState: DemoState = {
   factsFreshness: "unknown",
+  sourceStatus: "disabled",
   rooms: [
     { id: "room-living", name: "客厅", width: 7, depth: 5, evidence: "confirmed" },
     { id: "room-bedroom", name: "卧室", width: 4, depth: 3, evidence: "inferred" },

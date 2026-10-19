@@ -5,6 +5,7 @@ import { redactRgbaFrame } from "./redactFrame";
 import { rgbaPixelsToCss } from "./pixelPreview";
 import { refreshDemoScenario } from "./demoRefresh";
 import { finishRefresh, startRefresh, type DemoRefreshState } from "./refreshState";
+import { providerPresentation } from "./providerPresentation";
 
 const syntheticFrame = new Uint8ClampedArray([
   70, 120, 100, 255, 70, 120, 100, 255,
@@ -77,7 +78,7 @@ export function App({ state }: { state: DemoState }) {
           </section>
 
           <section className="panel-block evidence-card">
-            <div className="block-heading"><h2>空间证据</h2><span className="quiet-label">{facts.factsFreshness === "fresh" ? "事实有效" : "事实未知"}</span></div>
+            <div className="block-heading"><h2>空间证据</h2><span className="quiet-label">{providerPresentation({ status: facts.sourceStatus, label: "", errorCode: null })} · {facts.factsFreshness === "fresh" ? "事实有效" : "事实未知"}</span></div>
             {facts.rooms.map((room) => (
               <div className="evidence-row" key={room.id}>
                 <span>{room.name}</span><span className={`evidence-tag ${room.evidence}`}>{room.evidence === "confirmed" ? "已确认" : room.evidence === "inferred" ? "推断" : "未知"}</span>

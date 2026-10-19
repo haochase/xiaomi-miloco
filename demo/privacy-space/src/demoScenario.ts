@@ -2,12 +2,15 @@ import type { DemoState } from "./demoSchema";
 import { demoState } from "./demoData";
 import { projectHostFacts } from "./hostAdapter";
 import { parseHostPrivacyFactsFixture } from "./hostFactsFixture";
+import { readProviderScenario } from "./providerScenario";
 
 export function selectDemoScenario(name: string | null): DemoState {
   if (name === "room-names") {
     return projectHostFacts({ rooms: [{ id: "living", name: "客厅" }] });
   }
   if (name === "unknown") return projectHostFacts({});
+  if (name === "provider-failed") return { ...demoState, sourceStatus: readProviderScenario("failed").status };
+  if (name === "provider-ready") return { ...demoState, sourceStatus: readProviderScenario("fixture").status };
   if (name === "fixture") {
     const fixture = parseHostPrivacyFactsFixture({
       schemaVersion: 1,

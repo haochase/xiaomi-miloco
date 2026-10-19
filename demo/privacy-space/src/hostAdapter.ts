@@ -10,6 +10,7 @@ export type HostPrivacyFacts = {
 
 const unknownState: DemoState = {
   factsFreshness: "unknown",
+  sourceStatus: "disabled",
   rooms: [],
   devices: [],
   peopleCount: null,

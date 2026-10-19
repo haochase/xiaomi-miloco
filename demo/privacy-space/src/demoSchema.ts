@@ -16,6 +16,7 @@ export type DemoDevice = {
 
 export type DemoState = {
   factsFreshness: "fresh" | "unknown";
+  sourceStatus: "disabled" | "ready" | "failed";
   rooms: DemoRoom[];
   devices: DemoDevice[];
   peopleCount: number | null;
@@ -35,6 +36,7 @@ export type DemoState = {
 export function serializeDemoState(state: DemoState): string {
   return JSON.stringify({
     factsFreshness: state.factsFreshness,
+    sourceStatus: state.sourceStatus,
     rooms: state.rooms.map(({ id, name, width, depth, evidence }) => ({ id, name, width, depth, evidence })),
     devices: state.devices.map(({ type, label, online }) => ({ type, label, online })),
     peopleCount: state.peopleCount,
