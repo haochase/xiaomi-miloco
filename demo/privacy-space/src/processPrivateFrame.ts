@@ -10,6 +10,7 @@ type ProcessRequest = {
   regions: RedactionRegion[];
   statFrame?: (path: string) => Promise<{ size: number; isSymbolicLink(): boolean; isFile(): boolean }>;
   readFrame?: (path: string) => Promise<Uint8Array>;
+  deleteFrame?: (path: string) => Promise<void>;
 };
 
 const MAX_FRAME_BYTES = 16 * 1024 * 1024;
@@ -33,11 +34,15 @@ export async function processPrivateRgbaFrame(request: ProcessRequest): Promise<
   let redactedPixels: Uint8ClampedArray | null = null;
   let errorCode: ProcessResult["errorCode"] = null;
   let temporaryFrameCleared = false;
+  let canDeleteSource = false;
   try {
     const metadata = await (request.statFrame ?? lstat)(source);
+    if (!metadata.isFile() || metadata.isSymbolicLink()) {
+      throw new Error("invalid file type");
+    }
+    canDeleteSource = true;
     const expectedBytes = request.width * request.height * 4;
     if (
-      !metadata.isFile() || metadata.isSymbolicLink() ||
       !Number.isSafeInteger(expectedBytes) || expectedBytes <= 0 ||
       expectedBytes > MAX_FRAME_BYTES || metadata.size !== expectedBytes
     ) throw new Error("invalid frame metadata");
@@ -50,12 +55,14 @@ export async function processPrivateRgbaFrame(request: ProcessRequest): Promise<
   } catch {
     errorCode = "privacy_processing_failed";
   } finally {
-    try {
-      await unlink(source);
-      temporaryFrameCleared = true;
-    } catch {
-      errorCode = "temporary_frame_cleanup_failed";
-      redactedPixels = null;
+    if (canDeleteSource) {
+      try {
+        await (request.deleteFrame ?? unlink)(source);
+        temporaryFrameCleared = true;
+      } catch {
+        errorCode = "temporary_frame_cleanup_failed";
+        redactedPixels = null;
+      }
     }
   }
 

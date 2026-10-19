@@ -62,8 +62,12 @@ describe("processPrivateRgbaFrame", () => {
   it("does not claim success when cleanup fails", async () => {
     const root = await mkdtemp(join(TEMP_ROOT, "miloco-privacy-pipeline-"));
     roots.push(root);
-    const path = join(root, "missing.rgba");
-    const result = await processPrivateRgbaFrame({ path, temporaryRoot: root, width: 1, height: 1, regions: [] });
+    const path = join(root, "synthetic.rgba");
+    await writeFile(path, Buffer.from([10, 20, 30, 255]));
+    const result = await processPrivateRgbaFrame({
+      path, temporaryRoot: root, width: 1, height: 1, regions: [],
+      deleteFrame: async () => { throw new Error("cleanup failed"); },
+    });
 
     expect(result).toMatchObject({ status: "failed", errorCode: "temporary_frame_cleanup_failed", temporaryFrameCleared: false, redactedPixels: null });
   });
@@ -115,8 +119,8 @@ describe("processPrivateRgbaFrame", () => {
 
     const result = await processPrivateRgbaFrame({ path, temporaryRoot: root, width: 1, height: 1, regions: [], statFrame, readFrame });
 
-    expect(result).toMatchObject({ status: "failed", errorCode: "privacy_processing_failed", temporaryFrameCleared: true, redactedPixels: null });
+    expect(result).toMatchObject({ status: "failed", errorCode: "privacy_processing_failed", temporaryFrameCleared: false, redactedPixels: null });
     expect(readFrame).not.toHaveBeenCalled();
-    await expect(readFile(path)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(readFile(path)).resolves.toEqual(Buffer.from([10, 20, 30, 255]));
   });
 });
