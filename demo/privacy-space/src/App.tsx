@@ -5,7 +5,7 @@ import { SceneCanvas } from "./SceneCanvas";
 export function App({ state }: { state: DemoState }) {
   const [privacy, setPrivacy] = useState(state.privacy);
   const replaySyntheticPrivacyResult = () => {
-    const next = { ...privacy, status: "processed" as const, temporaryFrameCleared: true, errorCode: null };
+    const next = { ...privacy, status: "processed" as const, temporaryFrameCleared: true, frameCount: 1, errorCode: null };
     setPrivacy(next);
   };
 
@@ -34,7 +34,7 @@ export function App({ state }: { state: DemoState }) {
             </div>
             <p className="large-status">{privacy.temporaryFrameCleared ? "临时帧已清理" : privacy.status === "failed" ? "临时帧清理失败" : "等待处理"}</p>
             <div className="metric-row">
-              <span>处理帧数</span><strong>{state.privacy.frameCount}</strong>
+              <span>处理帧数</span><strong>{privacy.frameCount}</strong>
             </div>
             <div className="metric-row">
               <span>展示内容</span><strong>结构化摘要</strong>
