@@ -18,5 +18,6 @@ describe("selectDemoScenario", () => {
     expect(state.peopleCount).toBe(0);
     expect(state.rooms[0]?.width).toBeNull();
     expect(state.outfit.candidates).toEqual(["浅色上衣"]);
+    expect(state.factsFreshness).toBe("fresh");
   });
 });

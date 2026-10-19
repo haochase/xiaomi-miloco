@@ -1,4 +1,5 @@
 import type { DemoState } from "./demoSchema";
+import { freshnessLabel } from "./freshness";
 
 export type HostPrivacyFacts = {
   metadata?: { observedAt: string; expiresAt: string; source: "host" };
@@ -8,6 +9,7 @@ export type HostPrivacyFacts = {
 };
 
 const unknownState: DemoState = {
+  factsFreshness: "unknown",
   rooms: [],
   devices: [],
   peopleCount: null,
@@ -55,10 +57,11 @@ function validFacts(facts: HostPrivacyFacts): boolean {
   return true;
 }
 
-export function projectHostFacts(facts: HostPrivacyFacts): DemoState {
+export function projectHostFacts(facts: HostPrivacyFacts, now = new Date()): DemoState {
   if (!validFacts(facts)) throw new Error("invalid host facts");
   return {
     ...unknownState,
+    factsFreshness: freshnessLabel(facts.metadata, now),
     rooms: (facts.rooms ?? []).map((room) => ({
       id: room.id,
       name: room.name,

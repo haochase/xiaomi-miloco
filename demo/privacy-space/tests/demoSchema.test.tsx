@@ -19,6 +19,7 @@ describe("privacy space demo state", () => {
     );
     expect(serialized).not.toMatch(/owner|device_id|token|path|secret|raw|provider/i);
     expect(demoState.privacy.status).toBe("idle");
+    expect(demoState.factsFreshness).toBe("unknown");
     expect(demoState.privacy.temporaryFrameCleared).toBe(false);
   });
 
