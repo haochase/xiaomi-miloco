@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { DemoState } from "./demoSchema";
 import { SceneCanvas } from "./SceneCanvas";
 import { redactRgbaFrame } from "./redactFrame";
+import { rgbaPixelsToCss } from "./pixelPreview";
 
 const syntheticFrame = new Uint8ClampedArray([
   70, 120, 100, 255, 70, 120, 100, 255,
@@ -10,13 +11,13 @@ const syntheticFrame = new Uint8ClampedArray([
 
 export function App({ state }: { state: DemoState }) {
   const [privacy, setPrivacy] = useState(state.privacy);
-  const [redacted, setRedacted] = useState(false);
+  const [previewPixels, setPreviewPixels] = useState<Uint8ClampedArray | null>(null);
   const replaySyntheticPrivacyResult = () => {
     const result = redactRgbaFrame(
       { width: 2, height: 2, pixels: syntheticFrame },
       [{ x: 1, y: 0, width: 1, height: 2 }],
     );
-    setRedacted(result.redactedPixelCount === 2);
+    setPreviewPixels(result.pixels);
     const next = { ...privacy, status: "processed" as const, temporaryFrameCleared: false, frameCount: 1, errorCode: null };
     setPrivacy(next);
   };
@@ -52,8 +53,8 @@ export function App({ state }: { state: DemoState }) {
               <span>展示内容</span><strong>结构化摘要</strong>
             </div>
             <div className="comparison" aria-label="合成帧遮挡示例">
-              <div className="comparison-frame source"><span>合成输入</span><i /><i /><i /><i /></div>
-              <div className={`comparison-frame ${redacted ? "redacted" : "pending"}`}><span>{redacted ? "已遮挡" : "待处理"}</span><i /><i /><i /><i /></div>
+              <div className="comparison-frame"><span>合成输入</span>{rgbaPixelsToCss(syntheticFrame, 2, 2).map((color, index) => <i key={index} style={{ backgroundColor: color }} />)}</div>
+              <div className="comparison-frame"><span>{previewPixels ? "已遮挡" : "待处理"}</span>{rgbaPixelsToCss(previewPixels ?? syntheticFrame, 2, 2).map((color, index) => <i key={index} style={{ backgroundColor: color }} />)}</div>
             </div>
             {privacy.status !== "processed" && <button className="action-button" onClick={replaySyntheticPrivacyResult}>回放合成处理结果</button>}
             {privacy.errorCode && <p className="error-copy">错误码：{privacy.errorCode}</p>}
