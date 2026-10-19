@@ -13,4 +13,8 @@ describe("readPrivacyFacts", () => {
   it("rejects invalid provider snapshots without exposing raw errors", () => {
     expect(readPrivacyFacts(() => ({ snapshotId: "owner=secret" }))).toEqual({ status: "failed", snapshot: null, errorCode: "provider_invalid" });
   });
+
+  it("fails closed when a provider returns an asynchronous value", () => {
+    expect(readPrivacyFacts(() => Promise.resolve({ snapshotId: "opaque-1" }))).toEqual({ status: "failed", snapshot: null, errorCode: "provider_failed" });
+  });
 });
