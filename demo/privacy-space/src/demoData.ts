@@ -1,4 +1,27 @@
 import type { DemoState } from "./demoSchema";
+import { projectOutfitRecommendation } from "./outfitProjection";
+
+export const syntheticWardrobe: Array<{
+  itemId: string;
+  name: string;
+  status: "confirmed";
+  availability: "available";
+}> = [
+  { itemId: "top-1", name: "浅色针织上衣", status: "confirmed", availability: "available" },
+  { itemId: "bottom-1", name: "深色长裤", status: "confirmed", availability: "available" },
+  { itemId: "outerwear-1", name: "轻薄外套", status: "confirmed", availability: "available" },
+  { itemId: "shoes-1", name: "运动鞋", status: "confirmed", availability: "available" },
+];
+
+export const syntheticRecommendation: {
+  context: { activity: string };
+  status: "ready";
+  optionItemIds: string[][];
+} = {
+  context: { activity: "通勤" },
+  status: "ready",
+  optionItemIds: [["top-1", "bottom-1"], ["outerwear-1", "shoes-1"]],
+};
 
 export const demoState: DemoState = {
   rooms: [
@@ -11,11 +34,7 @@ export const demoState: DemoState = {
     { type: "speaker", label: "语音播报", online: false },
   ],
   peopleCount: 1,
-  outfit: {
-    scene: "通勤",
-    status: "ready",
-    candidates: ["浅色针织上衣 + 深色长裤", "轻薄外套 + 运动鞋"],
-  },
+  outfit: projectOutfitRecommendation(syntheticRecommendation, syntheticWardrobe),
   privacy: {
     status: "idle",
     temporaryFrameCleared: false,
