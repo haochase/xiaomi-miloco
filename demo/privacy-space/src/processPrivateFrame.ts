@@ -19,8 +19,9 @@ type ProcessResult = {
   status: "processed" | "failed";
   errorCode: "privacy_processing_failed" | "temporary_frame_cleanup_failed" | null;
   temporaryFrameCleared: boolean;
-  /** Local rendering only; never serialize into logs, audit records, or API responses. */
+  /** Local rendering only. JSON serialization omits this field; other serializers must exclude it explicitly. */
   redactedPixels: Uint8ClampedArray | null;
+  toJSON(): Omit<ProcessResult, "redactedPixels" | "toJSON">;
 };
 
 export async function processPrivateRgbaFrame(request: ProcessRequest): Promise<ProcessResult> {
@@ -28,7 +29,7 @@ export async function processPrivateRgbaFrame(request: ProcessRequest): Promise<
   const root = resolve(request.temporaryRoot);
   const inside = relative(root, source);
   if (!isAbsolute(request.path) || inside === "" || inside.startsWith("..") || isAbsolute(inside)) {
-    return { status: "failed", errorCode: "privacy_processing_failed", temporaryFrameCleared: false, redactedPixels: null };
+    return makeResult("failed", "privacy_processing_failed", false, null);
   }
 
   let redactedPixels: Uint8ClampedArray | null = null;
@@ -66,10 +67,20 @@ export async function processPrivateRgbaFrame(request: ProcessRequest): Promise<
     }
   }
 
+  return makeResult(errorCode === null ? "processed" : "failed", errorCode, temporaryFrameCleared, redactedPixels);
+}
+
+function makeResult(
+  status: ProcessResult["status"],
+  errorCode: ProcessResult["errorCode"],
+  temporaryFrameCleared: boolean,
+  redactedPixels: Uint8ClampedArray | null,
+): ProcessResult {
   return {
-    status: errorCode === null ? "processed" : "failed",
+    status,
     errorCode,
     temporaryFrameCleared,
     redactedPixels,
+    toJSON: () => ({ status, errorCode, temporaryFrameCleared }),
   };
 }

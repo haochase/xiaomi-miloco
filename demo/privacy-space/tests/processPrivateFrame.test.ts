@@ -25,6 +25,8 @@ describe("processPrivateRgbaFrame", () => {
     expect(result.temporaryFrameCleared).toBe(true);
     expect([...result.redactedPixels!]).toEqual([10, 20, 30, 255, 0, 0, 0, 255]);
     expect(JSON.stringify(result)).not.toContain(path);
+    expect(JSON.stringify(result)).not.toContain("redactedPixels");
+    expect(JSON.stringify(result)).not.toContain("10");
     await expect(readFile(path)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
