@@ -36,6 +36,7 @@ $env:NODE_PATH = "E:\\new_job\\10-AIProjects\\MilocoDev\\xiaomi-miloco-outfit-vo
 pnpm run typecheck
 pnpm run build
 pnpm test
+pnpm run smoke:static
 ```
 
 从已安装依赖的 web workspace 复用 Vitest：
@@ -46,6 +47,7 @@ $env:NODE_PATH = "E:\new_job\10-AIProjects\MilocoDev\xiaomi-miloco-outfit-voice-
 ```
 
 当前测试只使用合成临时文件，临时目录应放在 E 盘。浏览器启动和 Playwright 验收需要在 demo 目录安装 React/Vite 依赖后进行。
+`smoke:static` 只验证 production 包中的关键文案、敏感字段排除和响应式断点，不替代真实浏览器交互验收。
 
 ## 面试演示脚本
 

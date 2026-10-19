@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 4178",
     "build": "tsc --noEmit && vite build",
+    "smoke:static": "node tests/staticSmoke.mjs",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
