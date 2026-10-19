@@ -11,6 +11,10 @@ describe("projectHostFacts", () => {
     expect(state.outfit.status).toBe("unavailable");
   });
 
+  it("accepts an explicitly empty room list", () => {
+    expect(projectHostFacts({ rooms: [] }).rooms).toEqual([]);
+  });
+
   it("keeps an explicit zero distinct from an unknown people count", () => {
     expect(projectHostFacts({ anonymousPeopleCount: 0 }).peopleCount).toBe(0);
   });
