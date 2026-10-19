@@ -3,6 +3,7 @@ import type { DemoState } from "./demoSchema";
 import { SceneCanvas } from "./SceneCanvas";
 import { redactRgbaFrame } from "./redactFrame";
 import { rgbaPixelsToCss } from "./pixelPreview";
+import { refreshDemoScenario } from "./demoRefresh";
 
 const syntheticFrame = new Uint8ClampedArray([
   70, 120, 100, 255, 70, 120, 100, 255,
@@ -10,6 +11,8 @@ const syntheticFrame = new Uint8ClampedArray([
 ]);
 
 export function App({ state }: { state: DemoState }) {
+  const scenario = new URLSearchParams(window.location.search).get("scenario");
+  const [facts, setFacts] = useState(state);
   const [privacy, setPrivacy] = useState(state.privacy);
   const [previewPixels, setPreviewPixels] = useState<Uint8ClampedArray | null>(null);
   const replaySyntheticPrivacyResult = () => {
@@ -37,7 +40,7 @@ export function App({ state }: { state: DemoState }) {
       </header>
 
       <section className="workspace">
-        <SceneCanvas rooms={state.rooms} devices={state.devices} peopleCount={state.peopleCount} />
+        <SceneCanvas rooms={facts.rooms} devices={facts.devices} peopleCount={facts.peopleCount} />
 
         <aside className="side-panel">
           <section className="panel-block privacy-card">
@@ -63,21 +66,22 @@ export function App({ state }: { state: DemoState }) {
           <section className="panel-block outfit-card">
             <div className="block-heading">
               <h2>今日建议</h2>
-              <span className="quiet-label">{state.outfit.scene}</span>
+              <span className="quiet-label">{facts.outfit.scene}</span>
             </div>
-            <p className="suggestion-state">{state.outfit.status === "ready" ? "已从确认库存生成" : "当前无法生成"}</p>
+            <p className="suggestion-state">{facts.outfit.status === "ready" ? "已从确认库存生成" : "当前无法生成"}</p>
             <ul>
-              {state.outfit.candidates.map((candidate) => <li key={candidate}>{candidate}</li>)}
+              {facts.outfit.candidates.map((candidate) => <li key={candidate}>{candidate}</li>)}
             </ul>
           </section>
 
           <section className="panel-block evidence-card">
-            <div className="block-heading"><h2>空间证据</h2><span className="quiet-label">{state.factsFreshness === "fresh" ? "事实有效" : "事实未知"}</span></div>
-            {state.rooms.map((room) => (
+            <div className="block-heading"><h2>空间证据</h2><span className="quiet-label">{facts.factsFreshness === "fresh" ? "事实有效" : "事实未知"}</span></div>
+            {facts.rooms.map((room) => (
               <div className="evidence-row" key={room.id}>
                 <span>{room.name}</span><span className={`evidence-tag ${room.evidence}`}>{room.evidence === "confirmed" ? "已确认" : room.evidence === "inferred" ? "推断" : "未知"}</span>
               </div>
             ))}
+            <button className="action-button" onClick={() => setFacts(refreshDemoScenario(scenario))}>重新读取合成事实</button>
           </section>
         </aside>
       </section>

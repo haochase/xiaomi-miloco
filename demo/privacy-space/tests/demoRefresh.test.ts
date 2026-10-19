@@ -1,0 +1,14 @@
+import { describe, expect, it } from "vitest";
+import { refreshDemoScenario } from "../src/demoRefresh";
+
+describe("refreshDemoScenario", () => {
+  it("reloads the selected local fixture without changing the scenario", () => {
+    const state = refreshDemoScenario("fixture");
+    expect(state.factsFreshness).toBe("fresh");
+    expect(state.outfit.candidates).toEqual(["浅色上衣"]);
+  });
+
+  it("falls back to the synthetic default for an unknown scenario", () => {
+    expect(refreshDemoScenario("unexpected").peopleCount).toBe(1);
+  });
+});
