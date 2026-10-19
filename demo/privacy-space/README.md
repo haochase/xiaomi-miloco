@@ -46,7 +46,7 @@ $env:NODE_PATH = "E:\new_job\10-AIProjects\MilocoDev\xiaomi-miloco-outfit-voice-
 & "E:\new_job\10-AIProjects\MilocoDev\xiaomi-miloco-outfit-voice-vision\web\node_modules\.bin\vitest.cmd" run --config "E:\new_job\10-AIProjects\MilocoDev\xiaomi-miloco-outfit-voice-vision\demo\privacy-space\vitest.config.ts"
 ```
 
-当前测试只使用合成临时文件，临时目录应放在 E 盘。浏览器启动和 Playwright 验收需要在 demo 目录安装 React/Vite 依赖后进行。
+当前测试只使用合成临时文件，临时目录应放在 E 盘。2026-10-19 已通过内置浏览器完成桌面 1440×900 和手机 390×844 视口的真实渲染、回放点击及无横向溢出检查。
 `smoke:static` 只验证 production 包中的关键文案、敏感字段排除和响应式断点，不替代真实浏览器交互验收。
 
 ## 面试演示脚本
