@@ -1,4 +1,4 @@
-type ProviderDisplay = { status: "disabled" | "ready" | "failed"; label: string; errorCode: string | null };
+type ProviderDisplay = { status: "disabled" | "ready" | "failed"; label: string };
 
 export function providerPresentation(result: ProviderDisplay): string {
   if (result.status === "disabled") return "事实源未启用";
