@@ -19,6 +19,8 @@
 - `?scenario=fixture` 演示版本化脱敏事实 fixture：普通扩展字段会丢弃，owner、设备 ID、路径、token 和原始媒体字段会拒绝，不进入页面状态。
 - “重新读取合成事实”只重新加载当前本地合成场景，不访问网络、摄像头、模型或 Miloco 宿主；真实宿主刷新动作需另行设计用户主动触发和频率限制。
 - 刷新按钮有明确的本地状态：读取中、完成或固定错误码 `fixture_unavailable`；它不是实时同步或设备健康检查。
+- `?scenario=provider-ready` 和 `?scenario=provider-failed` 用于演示事实源可用/不可用的低敏文案；production bundle smoke 会拒绝 `provider_failed`、`provider_invalid` 等内部错误码进入公开脚本。
+- 空间证据标题会统一组合事实源状态与 freshness：只有事实源可用且 freshness 为 fresh 时才显示“事实有效”，其他组合都显示“事实未知”。
 
 宿主 MIoT 当前能提供设备关联的房间名称，但未提供已确认的房间几何或经过审查的匿名人数事实。上述查询参数只是演示选择器，不调用宿主 API，也不代表这些名称已经接入真实家庭数据。
 
