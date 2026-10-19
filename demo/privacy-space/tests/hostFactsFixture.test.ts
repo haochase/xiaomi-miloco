@@ -27,4 +27,10 @@ describe("parseHostPrivacyFactsFixture", () => {
     expect(() => parseHostPrivacyFactsFixture({ schemaVersion: 1, deviceId: "camera-1" })).toThrow("invalid host facts fixture");
     expect(() => parseHostPrivacyFactsFixture({ schemaVersion: 1, media: { bytes: "..." } })).toThrow("invalid host facts fixture");
   });
+
+  it("rejects malformed facts instead of deferring validation to the view adapter", () => {
+    expect(() => parseHostPrivacyFactsFixture({ schemaVersion: 1, rooms: [{ id: "living" }] })).toThrow("invalid host facts fixture");
+    expect(() => parseHostPrivacyFactsFixture({ schemaVersion: 1, anonymousPeopleCount: "0" })).toThrow("invalid host facts fixture");
+    expect(() => parseHostPrivacyFactsFixture({ schemaVersion: 1, outfit: { scene: "通勤", candidates: "浅色上衣", ready: true } })).toThrow("invalid host facts fixture");
+  });
 });

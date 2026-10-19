@@ -1,4 +1,5 @@
 import type { HostPrivacyFacts } from "./hostAdapter";
+import { projectHostFacts } from "./hostAdapter";
 
 type FixtureRecord = Record<string, unknown>;
 
@@ -28,5 +29,10 @@ export function parseHostPrivacyFactsFixture(value: unknown): HostPrivacyFacts {
     candidate.anonymousPeopleCount = value.anonymousPeopleCount as number;
   }
   if (value.outfit !== undefined) candidate.outfit = value.outfit as HostPrivacyFacts["outfit"];
+  try {
+    projectHostFacts(candidate);
+  } catch {
+    throw new Error("invalid host facts fixture");
+  }
   return candidate;
 }
